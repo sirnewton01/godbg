@@ -44,11 +44,13 @@ func main() {
 	gopath := build.Default.GOPATH
 	
 	if len(os.Args) != 3 {
-		fmt.Printf("Insufficient number of arguments.\nUsage: godbg <path_to_executable> <path_to_src_folder>\nNote: paths are relative to the gopath.\n");
+		fmt.Printf("Insufficient number of arguments.\nUsage: godbg <path_to_executable> <path_to_src_folder>\n");
 		return
 	}
 	
-	mygdb, err := gdblib.NewGDB(gopath + os.Args[1], gopath + os.Args[2])
+	// TODO validate the input parameters (executable, exists, etc.)
+	
+	mygdb, err := gdblib.NewGDB(os.Args[1], os.Args[2])
 	if err != nil {
 		panic(err)
 	}
