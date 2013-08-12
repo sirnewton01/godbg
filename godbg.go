@@ -3,7 +3,6 @@ package main
 import(
 	"fmt"
 	"os"
-	"os/exec"
 	"go/build"
 	"github.com/sirnewton01/gdblib"
 	"net/http"
