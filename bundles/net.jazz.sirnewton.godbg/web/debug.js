@@ -73,7 +73,8 @@ define(['orion/xhr'], function(xhr) {
 		});
 	});
 	
-	document.getElementById("interrupt").addEventListener("click", function(e) {
+	var interruptButton = document.getElementById("interrupt");
+	interruptButton.addEventListener("click", function(e) {
 		xhr("POST", "/handle/exec/interrupt", {
 			headers: {},
 			timeout: 60000,
@@ -83,7 +84,8 @@ define(['orion/xhr'], function(xhr) {
 		});
 	});
 	
-	document.getElementById("exit").addEventListener("click", function(e) {
+	var exitButton = document.getElementById("exit");
+	exitButton.addEventListener("click", function(e) {
 		xhr("POST", "/handle/gdb/exit", {
 			headers: {},
 			timeout: 60000,
@@ -148,6 +150,12 @@ define(['orion/xhr'], function(xhr) {
 			var parentPanel = this.variablesTable.parentNode;
 			
 			parentPanel.setAttribute("style", parentPanel.getAttribute("style").replace("z-index: 100;", "z-index: 50;"));
+		},
+		
+		disable: function() {
+			var parentPanel = this.variablesTable.parentNode;
+			
+			parentPanel.setAttribute("style", parentPanel.getAttribute("style").replace("background: white;", "background: grey"));
 		}
 	};
 	
@@ -466,6 +474,9 @@ define(['orion/xhr'], function(xhr) {
 					executionWidget.disable();
 				}
 			}
+		},
+		
+		disable: function() {
 		}
 	};
 	
@@ -607,6 +618,14 @@ define(['orion/xhr'], function(xhr) {
 			var parentPanel = this.breakpointsTable.parentNode;
 			
 			parentPanel.setAttribute("style", parentPanel.getAttribute("style").replace("z-index: 100;", "z-index: 50;"));
+		},
+		
+		disable: function() {
+			var parentPanel = this.breakpointsTable.parentNode;
+			
+			parentPanel.setAttribute("style", parentPanel.getAttribute("style").replace("background: white;", "background: grey"));
+			
+			this.addBreakpointInput.disabled = true;
 		}
 	};
 	
@@ -641,7 +660,19 @@ define(['orion/xhr'], function(xhr) {
 	
 	var websocket = new WebSocket("ws://127.0.0.1:2023/output");
 	//websocket.onopen = function(evt) {  };
-	websocket.onclose = function(evt) { window.alert("Connection to debugger has been closed");};
+	websocket.onclose = function(evt) {
+		window.alert("Connection to debugger has been closed");
+		
+		document.body.setAttribute("style", "overflow: hidden; background: grey;");
+		
+		allVariablesWidget.disable();
+		allBreakpointsWidget.disable();
+		allThreadsWidget.disable();
+		executionWidget.disable();
+		runButton.disabled = true;
+		interruptButton.disabled = true;
+		exitButton.disabled = true;
+	};
 	websocket.onmessage = function(evt) {
 		var event = JSON.parse(evt.data);
 		var type = event.Type;

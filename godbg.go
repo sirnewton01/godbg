@@ -3,6 +3,7 @@ package main
 import(
 	"fmt"
 	"os"
+	"os/exec"
 	"go/build"
 	"github.com/sirnewton01/gdblib"
 	"net/http"
@@ -139,9 +140,11 @@ func main() {
 		http.HandleFunc("/handle/gdb/exit", func(w http.ResponseWriter, r *http.Request) {
 			mygdb.GdbExit()
 		})
-		fmt.Printf("Server started at http://127.0.0.1:2023\n")
+		fmt.Printf("Server started\n")
 		http.ListenAndServe("127.0.0.1:2023", nil)
 	}()
+	
+	go openBrowser("http://127.0.0.1:2023")
 	
 	err = mygdb.Wait()
 	if err != nil {
