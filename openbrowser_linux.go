@@ -3,6 +3,8 @@
 package main
 
 import(
+	"os"
+	"fmt"
 	"os/exec"
 )
 
@@ -24,7 +26,7 @@ func openBrowser(url string) {
 	// Free desktop spec indicates that xdg-open should open any arbitrary provided URL
 	//  on the local machine using the user's preferred browser.
 	cmd := exec.Command("xdg-open", url)
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		fmt.Printf("%v\n", url)
 	}
