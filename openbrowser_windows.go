@@ -1,6 +1,6 @@
 // +build windows
 
-package "godbg"
+package main
 
 import(
 	"os/exec"

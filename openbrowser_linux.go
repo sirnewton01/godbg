@@ -1,6 +1,6 @@
 // +build linux
 
-package "godbg"
+package main
 
 import(
 	"os/exec"

@@ -1,6 +1,6 @@
 // +build freebsd netbsd openbsd
 
-package "godbg"
+package main
 
 import(
 	"fmt"

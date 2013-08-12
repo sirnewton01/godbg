@@ -1,6 +1,6 @@
 // +build darwin
 
-package "godbg"
+package main
 
 import(
 	"os/exec"
