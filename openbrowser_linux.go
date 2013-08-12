@@ -9,13 +9,13 @@ import(
 )
 
 func openBrowser(url string) {
-	if os.GetEnv("DISPLAY") == "" {
+	if os.Getenv("DISPLAY") == "" {
 		// No display means that the a browser cannot be opened automatically
 		fmt.Printf("%v\n", url)
 		return
 	}
 	
-	if os.GetEnv("SSH_CLIENT") != "" || os.GetEnv("SSH_TTY") != "" {
+	if os.Getenv("SSH_CLIENT") != "" || os.Getenv("SSH_TTY") != "" {
 		// SSH environment variables means that the terminal is running through an secure
 		//  shell session. We want to launch the browser where the display is located,
 		//  not through a X tunnel.
