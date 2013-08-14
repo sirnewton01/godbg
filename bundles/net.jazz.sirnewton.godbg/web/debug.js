@@ -63,18 +63,37 @@ define(['orion/xhr'], function(xhr) {
 	
 	executionWidget.init();
 	
-	var runButton = document.getElementById("run");	
-	runButton.addEventListener("click", function(e) {
-		xhr("POST", "/handle/exec/run", {
+	var runButton = document.getElementById("run");
+	var runArgsInput = document.getElementById("runArgs");
+	
+	var runHandler = function(e) {
+		// Set the arguments and then run on the callback unless there is an
+		//  error.
+		xhr("POST", "/handle/exec/args", {
 			headers: {},
 			timeout: 60000,
-			data: "{}"
+			data: JSON.stringify({Args: runArgsInput.value})
 		}).then(function(result){
-			// TODO figure out how to better differentiate between run and continue
-			//runButton.disabled = true;
+			xhr("POST", "/handle/exec/run", {
+				headers: {},
+				timeout: 60000,
+				data: "{}"
+			}).then(function(result){
+				// TODO figure out how to better differentiate between run and continue
+				//runButton.disabled = true;
+			}, function(error) {
+				window.alert("ERROR: "+error.responseText);
+			});
 		}, function(error) {
 			window.alert("ERROR: "+error.responseText);
 		});
+	};
+	
+	runButton.addEventListener("click", runHandler);
+	runArgsInput.addEventListener("keyup", function(e) {
+		if (e.keyCode === 13) {
+			runHandler(e);
+		}
 	});
 	
 	var interruptButton = document.getElementById("interrupt");

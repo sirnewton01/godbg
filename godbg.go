@@ -423,6 +423,24 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 		}
 		w.WriteHeader(200)
 	})
+	
+	http.HandleFunc("/handle/exec/args", func(w http.ResponseWriter, r *http.Request) {
+		parms := gdblib.ExecArgsParms{}
+
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(&parms)
+
+		if err == nil {
+			err = mygdb.ExecArgs(parms)
+		}
+
+		if err != nil {
+			w.WriteHeader(400)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		w.WriteHeader(200)
+	})
 
 	http.HandleFunc("/handle/exec/interrupt", func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecInterruptParms{}
