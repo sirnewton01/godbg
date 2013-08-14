@@ -18,22 +18,22 @@
 		
 		require(["debug.js"]);
 		</script>
-	</head>>>
+	</head>
 	<body id="debug-main" style="overflow:hidden;">
-		<div style="z-index:100; top: 10px; left: 50%; position: fixed; height: 200px; width: 50%; overflow: scroll; background: white;">
+		<div style="z-index:100; top: 10px; left: 50%; position: fixed; height: 200px; width: 50%; overflow: auto; background: white; border: 1px solid;">
 				<table id="breakpointTable" style="width:99%;">
 					<tr><th style="text-align:left; width: 20%;">Breakpoint ID</th><th style="text-align:left; width: 25%;">Function</th><th style="text-align:left; width: 40%;">File</th><th style="text-align:left; width: 15%;">Line</th></tr>
 					<tr><td colspan="4"><input type="text" id="addBreakpoint" placeholder="e.g. main.main or foo.go:12" style="width: 100%;"></input></td></tr>
 				</table>
 		</div>
-		<div style="z-index: 50; top: 10px; left: 50%; position: fixed; height: 200px; width: 50%; overflow: scroll; background: white;">
+		<div style="z-index: 50; top: 10px; left: 50%; position: fixed; height: 200px; width: 50%; overflow: auto; background: white; border: 1px solid;">
 				<table id="variablesTable" style="width:99%;">
 					<tr><th style="text-align:left; width: 10%;">Variable Name</th><th style="text-align:left; width: 25%;">Value</th></tr>
 				</table>
 		</div>
-		<div style="z-index: 100; top: 10px; position: fixed; height: 200px; width: 49%; overflow: scroll;">
+		<div style="z-index: 100; top: 10px; position: fixed; height: 200px; width: 49%; overflow: auto; border: 1px solid;">
 				<table id="threadTable" style="width:100%;">
-					<tr><th style="text-align:left; width:10%;">ID</th><th style="width: 1%;"></th><th style="text-align:left; width:15%;">Thread Name</th><th style="text-align:left; width:10%;">State</th><th style="text-align:left; width: 64%;">Stack Frames</th></tr>
+					<tr><th style="text-align:left; width:20%;">Thread ID</th><th style="width: 1%;"></th><th style="text-align:left; width:15%;">Name</th><th style="text-align:left; width:10%;">State</th><th style="text-align:left; width: 54%;">Stack Frames</th></tr>
 				</table>
 		</div>
 		<div id="execControls" style="z-index:100; top: 220px; position: fixed; height: 25px; width: 49%;">
@@ -48,12 +48,12 @@
 				<button id="showVariables">Show Variables</button>
 				<button id="showBreakpoints">Show Breakpoints</button>
 		</div>
-		<div id="file" style="position: absolute; top: 250px; bottom: 20%; left: 0px; right: 0px; overflow: scroll; width: 100%;">
+		<div id="file" style="position: absolute; top: 250px; bottom: 20%; left: 0px; right: 0px; overflow: auto; width: 100%; border: 1px solid;">
 			<div id="fileArea" style="height:100%; width: 100%;">
 				
 			</div>
 		</div>
-		<div id="console" class="" style="position: absolute; top: 80%; bottom: 10px; left: 0px; right: 0px; overflow: hidden; width: 100%;">
+		<div id="console" class="" style="position: absolute; top: 80%; bottom: 10px; left: 0px; right: 0px; overflow: auto; width: 100%;">
 			<div style="height:100%; width: 100%; overflow: scroll;">
 				<pre id="outputArea"></pre>
 			</div>
