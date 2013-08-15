@@ -681,7 +681,8 @@ define(['orion/xhr'], function(xhr) {
 	
 	var outputArea = document.getElementById("outputArea");
 	
-	var websocket = new WebSocket("ws://127.0.0.1:2023/output");
+	var wsUrl = document.URL.replace("http://", "ws://") + "output";
+	var websocket = new WebSocket(wsUrl);
 	//websocket.onopen = function(evt) {  };
 	websocket.onclose = function(evt) {
 		window.alert("Connection to debugger has been closed");

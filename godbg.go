@@ -12,6 +12,7 @@ import (
 	"github.com/sirnewton01/gdblib"
 	"go/build"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -58,6 +59,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	
+	serverAddrChan := make(chan string)
 
 	go func() {
 		bundle_root_dir := gopath + "/src/github.com/sirnewton01/godbg/bundles"
@@ -143,11 +146,22 @@ func main() {
 		http.HandleFunc("/handle/gdb/exit", func(w http.ResponseWriter, r *http.Request) {
 			mygdb.GdbExit()
 		})
+		
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			panic(err)
+		}
+		
+		serverAddrChan <- listener.Addr().String()
+		
 		fmt.Printf("Server started\n")
-		http.ListenAndServe("127.0.0.1:2023", nil)
+		http.Serve(listener, nil)
 	}()
 
-	go openBrowser("http://127.0.0.1:2023")
+	go func() {
+		serverAddr := <- serverAddrChan
+		openBrowser("http://"+serverAddr)
+	}()
 
 	err = mygdb.Wait()
 	if err != nil {
