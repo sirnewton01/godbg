@@ -122,8 +122,29 @@ define(['orion/xhr'], function(xhr) {
 	
 	var allVariablesWidget = {
 		variablesTable: document.getElementById("variablesTable"),
+		newExpressionInput: document.getElementById("addExpression"),
 		
 		init: function() {
+			var thisWidget = this;
+			this.newExpressionInput.addEventListener("keyup", function(e) {
+				if (e.keyCode === 13) {
+					var expression = thisWidget.newExpressionInput.value;
+					
+					xhr("POST", "/handle/variable/create", {
+						headers: {},
+						timeout: 60000,
+						data: JSON.stringify({Expression: expression})
+					}).then(function(result){
+						thisWidget.newExpressionInput.value = "";
+						
+						var resultObj = JSON.parse(result.response);
+						
+						thisWidget.addVariable(resultObj, expression);
+					}, function(error) {
+						window.alert("ERROR: "+error.responseText);
+					});
+				}
+			});
 		},
 		
 		setVariables: function(variables) {
@@ -132,19 +153,88 @@ define(['orion/xhr'], function(xhr) {
 			for (var idx = 0; idx < variables.length; idx++) {
 				var variable = variables[idx];
 				
-				var row = document.createElement("tr");
-				var nameColumn = document.createElement("td");
-				var valueColumn = document.createElement("td");
-				row.appendChild(nameColumn);
-				row.appendChild(valueColumn);
-				
-				// TODO proper escaping of the values
-				nameColumn.innerHTML = variable.name;
-				valueColumn.innerHTML = variable.value;
-				
-				this.variablesTable.appendChild(row);
+				this.addVariable(variable);
 			}
 		},
+		
+		addVariable: function(variable, expression, recursive) {
+			var row = document.createElement("tr");
+			var nameColumn = document.createElement("td");
+			var typeColumn = document.createElement("td");
+			var valueColumn = document.createElement("td");
+			row.appendChild(nameColumn);
+			row.appendChild(typeColumn);
+			row.appendChild(valueColumn);
+			
+			// TODO proper escaping of the values
+			var name = variable.name;
+			if (expression) {
+				name = name + " ["+expression+"]";
+			}
+			nameColumn.innerHTML = name;
+			if (variable.type) {
+				typeColumn.innerHTML = variable.type;
+			}
+			valueColumn.innerHTML = variable.value;
+			
+			this.variablesTable.appendChild(row);
+			
+			if (variable.numchild && variable.numchild !== "0" && !recursive) {				
+				var thisWidget = this;
+				xhr("POST", "/handle/variable/listchildren", {
+					headers: {},
+					timeout: 60000,
+					data: JSON.stringify({Name: variable.name, AllValues: true})
+				}).then(function(result){
+					var resultObj = JSON.parse(result.response);
+					
+					for (var idx = 0; idx < resultObj.children.length; idx++) {
+						thisWidget.addVariable(resultObj.children[idx], resultObj.children[idx].expr, true);
+					}
+				}, function(error) {
+					window.alert("ERROR: "+error.responseText);
+				});
+			}
+				
+//			this.addVariableHover(row, variable.name);
+		},
+		
+//		addVariableHover: function(row, variableName) {
+//			row.addEventListener("click", function(e) {
+//				var hover = document.createElement("div");
+//				hover.innerHTML = "Loading...";
+//				hover.setAttribute("style", "position: fixed; z-index: 200; top: 200px; left: 200px; height: 200px; width: 400px; overflow: auto; background: yellow; border: 1px solid;");
+//				document.body.appendChild(hover);
+//			
+//				xhr("POST", "/handle/variable/create", {
+//					headers: {},
+//					timeout: 60000,
+//					data: JSON.stringify({Expression: variableName/*, Dereference: true*/})
+//				}).then(function(result){
+//					var resultObj = JSON.parse(result.response);
+//					
+//					hover.innerHTML = resultObj.value;
+//					
+//					if (resultObj.numchild !== "0") {
+//						xhr("POST", "/handle/variable/listchildren", {
+//							headers: {},
+//							timeout: 60000,
+//							data: JSON.stringify({Name: resultObj.name, AllValues: true})
+//						}).then(function(result){
+//							var resultObj = JSON.parse(result.response);
+//							
+//							for (var idx = 0; idx < resultObj.children.length; idx++) {
+//								hover.innerHTML = hover.innerHTML + " " + resultObj.children[idx].name + "=" + resultObj.children[idx].value;
+//							}
+//						}, function(error) {
+//							window.alert("ERROR: "+error.responseText);
+//						});
+//					}
+//				}, function(error) {
+//					window.alert("ERROR: "+error.responseText);
+//				});
+//			});
+//		},
 		
 		clearVariables: function() {
 			var childrenToRemove = [];

@@ -142,6 +142,7 @@ func main() {
 		addBreakpointHandlers(mygdb)
 		addThreadHandlers(mygdb)
 		addFrameHandlers(mygdb)
+		addVariableHandlers(mygdb)
 
 		http.HandleFunc("/handle/gdb/exit", func(w http.ResponseWriter, r *http.Request) {
 			mygdb.GdbExit()
@@ -571,5 +572,92 @@ func addBreakpointHandlers(mygdb *gdblib.GDB) {
 		}
 
 		w.WriteHeader(200)
+	})
+}
+
+func addVariableHandlers(mygdb *gdblib.GDB) {
+	http.HandleFunc("/handle/variable/create", func(w http.ResponseWriter, r *http.Request) {
+		parms := gdblib.VarCreateParms{}
+		
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(&parms)
+
+		if err != nil {
+			w.WriteHeader(400)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		
+		result, err := mygdb.VarCreate(parms)
+
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		resultBytes, err := json.Marshal(result)
+
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(err.Error()))
+		} else {
+			w.WriteHeader(200)
+			w.Write(resultBytes)
+		}
+	})
+
+	http.HandleFunc("/handle/variable/delete", func(w http.ResponseWriter, r *http.Request) {
+		parms := gdblib.VarDeleteParms{}
+		
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(&parms)
+
+		if err != nil {
+			w.WriteHeader(400)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		
+		err = mygdb.VarDelete(parms)
+
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		
+		w.WriteHeader(200)
+	})
+	
+	http.HandleFunc("/handle/variable/listchildren", func(w http.ResponseWriter, r *http.Request) {
+		parms := gdblib.VarListChildrenParms{}
+		
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(&parms)
+
+		if err != nil {
+			w.WriteHeader(400)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		
+		result, err := mygdb.VarListChildren(parms)
+
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		resultBytes, err := json.Marshal(result)
+
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(err.Error()))
+		} else {
+			w.WriteHeader(200)
+			w.Write(resultBytes)
+		}
 	})
 }
