@@ -6,6 +6,22 @@
 /*browser:true*/
 
 define(['orion/xhr'], function(xhr) {
+
+	// Simplified xhr call
+	var myXhr = function(method, path, data) {
+		return xhr(method, path, {
+			headers: {},
+			timeout: 60000,
+			data: JSON.stringify(data)
+		});
+	};
+	
+	var myCallback = function(thisPtr, func) {
+		return function(arg) {
+			func.call(thisPtr, arg);
+		};
+	};
+	
 	var executionWidget = {		
 		init: function() {
 			this.nextButton = document.getElementById("next");
@@ -16,28 +32,19 @@ define(['orion/xhr'], function(xhr) {
 			this.disable();
 
 			this.nextButton.addEventListener("click", function(e) {
-				xhr("POST", "/handle/exec/next", {
-					headers: {},
-					timeout: 60000,
-					data: "{}"
+				myXhr("POST", "/handle/exec/next", {
 				}).then(function(result){}, function(error) {
 					window.alert("ERROR: "+error.responseText);
 				});
 			});
 			this.stepButton.addEventListener("click", function(e) {
-				xhr("POST", "/handle/exec/step", {
-					headers: {},
-					timeout: 60000,
-					data: "{}"
+				myXhr("POST", "/handle/exec/step", {
 				}).then(function(result){}, function(error) {
 					window.alert("ERROR: "+error.responseText);
 				});
 			});
 			this.continueButton.addEventListener("click", function(e) {
-				xhr("POST", "/handle/exec/continue", {
-					headers: {},
-					timeout: 60000,
-					data: "{}"
+				myXhr("POST", "/handle/exec/continue", {
 				}).then(function(result){}, function(error) {
 					window.alert("ERROR: "+error.responseText);
 				});
@@ -69,15 +76,10 @@ define(['orion/xhr'], function(xhr) {
 	var runHandler = function(e) {
 		// Set the arguments and then run on the callback unless there is an
 		//  error.
-		xhr("POST", "/handle/exec/args", {
-			headers: {},
-			timeout: 60000,
-			data: JSON.stringify({Args: runArgsInput.value})
+		myXhr("POST", "/handle/exec/args", {
+			Args: runArgsInput.value
 		}).then(function(result){
-			xhr("POST", "/handle/exec/run", {
-				headers: {},
-				timeout: 60000,
-				data: "{}"
+			myXhr("POST", "/handle/exec/run", {
 			}).then(function(result){
 				// TODO figure out how to better differentiate between run and continue
 				//runButton.disabled = true;
@@ -98,10 +100,7 @@ define(['orion/xhr'], function(xhr) {
 	
 	var interruptButton = document.getElementById("interrupt");
 	interruptButton.addEventListener("click", function(e) {
-		xhr("POST", "/handle/exec/interrupt", {
-			headers: {},
-			timeout: 60000,
-			data: "{}"
+		myXhr("POST", "/handle/exec/interrupt", {
 		}).then(function(result){}, function(error) {
 			window.alert("ERROR: "+error.responseText);
 		});
@@ -109,10 +108,7 @@ define(['orion/xhr'], function(xhr) {
 	
 	var exitButton = document.getElementById("exit");
 	exitButton.addEventListener("click", function(e) {
-		xhr("POST", "/handle/gdb/exit", {
-			headers: {},
-			timeout: 60000,
-			data: "{}"
+		myXhr("POST", "/handle/gdb/exit", {
 		}).then(function(result){
 			// TODO shut down the browser window
 		}, function(error) {
@@ -125,26 +121,23 @@ define(['orion/xhr'], function(xhr) {
 		newExpressionInput: document.getElementById("addExpression"),
 		
 		init: function() {
-			var thisWidget = this;
-			this.newExpressionInput.addEventListener("keyup", function(e) {
+			this.newExpressionInput.addEventListener("keyup", myCallback(this, function(e) {
 				if (e.keyCode === 13) {
-					var expression = thisWidget.newExpressionInput.value;
+					var expression = this.newExpressionInput.value;
 					
-					xhr("POST", "/handle/variable/create", {
-						headers: {},
-						timeout: 60000,
-						data: JSON.stringify({Expression: expression})
-					}).then(function(result){
-						thisWidget.newExpressionInput.value = "";
+					myXhr("POST", "/handle/variable/create", {
+						Expression: expression
+					}).then(myCallback(this, function(result) {
+						this.newExpressionInput.value = "";
 						
 						var resultObj = JSON.parse(result.response);
 						
-						thisWidget.addVariable(resultObj, expression);
-					}, function(error) {
+						this.addVariable(resultObj, expression);
+					}), function(error) {
 						window.alert("ERROR: "+error.responseText);
 					});
 				}
-			});
+			}));
 		},
 		
 		setVariables: function(variables) {
@@ -180,14 +173,13 @@ define(['orion/xhr'], function(xhr) {
 				
 			nameColumn.innerHTML = name;
 			
-			var thisWidget = this;
-			nameColumn.addEventListener("click", function(e) {
-				var exprInput = thisWidget.newExpressionInput;
+			nameColumn.addEventListener("click", myCallback(this, function(e) {
+				var exprInput = this.newExpressionInput;
 				
 				exprInput.value = name;
 				exprInput.scrollIntoView(true);
 				exprInput.focus();
-			});
+			}));
 			
 			if (variable.type) {
 				typeColumn.innerHTML = variable.type;
@@ -198,61 +190,20 @@ define(['orion/xhr'], function(xhr) {
 			
 			// We only allow one level of traversal for now.
 			if (variable.numchild && variable.numchild !== "0" && !parentExpression) {				
-				var thisWidget = this;
-				xhr("POST", "/handle/variable/listchildren", {
-					headers: {},
-					timeout: 60000,
-					data: JSON.stringify({Name: variable.name, AllValues: true})
-				}).then(function(result){
+				myXhr("POST", "/handle/variable/listchildren", {
+					Name: variable.name, 
+					AllValues: true
+				}).then(myCallback(this, function(result){
 					var resultObj = JSON.parse(result.response);
 					
 					for (var idx = 0; idx < resultObj.children.length; idx++) {
-						thisWidget.addVariable(resultObj.children[idx], resultObj.children[idx].expr, expression);
+						this.addVariable(resultObj.children[idx], resultObj.children[idx].expr, expression);
 					}
-				}, function(error) {
+				}), function(error) {
 					window.alert("ERROR: "+error.responseText);
 				});
 			}
-				
-//			this.addVariableHover(row, variable.name);
 		},
-		
-//		addVariableHover: function(row, variableName) {
-//			row.addEventListener("click", function(e) {
-//				var hover = document.createElement("div");
-//				hover.innerHTML = "Loading...";
-//				hover.setAttribute("style", "position: fixed; z-index: 200; top: 200px; left: 200px; height: 200px; width: 400px; overflow: auto; background: yellow; border: 1px solid;");
-//				document.body.appendChild(hover);
-//			
-//				xhr("POST", "/handle/variable/create", {
-//					headers: {},
-//					timeout: 60000,
-//					data: JSON.stringify({Expression: variableName/*, Dereference: true*/})
-//				}).then(function(result){
-//					var resultObj = JSON.parse(result.response);
-//					
-//					hover.innerHTML = resultObj.value;
-//					
-//					if (resultObj.numchild !== "0") {
-//						xhr("POST", "/handle/variable/listchildren", {
-//							headers: {},
-//							timeout: 60000,
-//							data: JSON.stringify({Name: resultObj.name, AllValues: true})
-//						}).then(function(result){
-//							var resultObj = JSON.parse(result.response);
-//							
-//							for (var idx = 0; idx < resultObj.children.length; idx++) {
-//								hover.innerHTML = hover.innerHTML + " " + resultObj.children[idx].name + "=" + resultObj.children[idx].value;
-//							}
-//						}, function(error) {
-//							window.alert("ERROR: "+error.responseText);
-//						});
-//					}
-//				}, function(error) {
-//					window.alert("ERROR: "+error.responseText);
-//				});
-//			});
-//		},
 		
 		clearVariables: function() {
 			var childrenToRemove = [];
@@ -337,26 +288,20 @@ define(['orion/xhr'], function(xhr) {
 					
 					this.threadTable.appendChild(this.row);
 					
-					var thisWidget = this;
-					
-					this.row.addEventListener("click", function(e) {
-						xhr("POST", "/handle/thread/select", {
-							headers: {},
-							timeout: 60000,
-							data: JSON.stringify({ThreadId: thisWidget.threadId})
-						}).then(function(result){
-							allThreadsWidget.selectThread(thisWidget.threadId);
-						}, function(error) {
+					this.row.addEventListener("click", myCallback(this, function(e) {
+						myXhr("POST", "/handle/thread/select", {
+							ThreadId: this.threadId
+						}).then(myCallback(this, function(result){
+							allThreadsWidget.selectThread(this.threadId);
+						}), function(error) {
 							window.alert("ERROR: "+error.responseText);
 						});
-					});
+					}));
 					
 					// Fill in more details about the thread (name, state)
-					xhr("POST", "/handle/thread/info", {
-						headers: {},
-						timeout: 60000,
-						data: JSON.stringify({ThreadId: this.threadId})
-					}).then(function(result){
+					myXhr("POST", "/handle/thread/info", {
+						ThreadId: this.threadId
+					}).then(myCallback(this, function(result){
 						var resultObj = JSON.parse(result.response);
 						
 						// Even though we specify the precise thread ID we are interested in
@@ -365,17 +310,17 @@ define(['orion/xhr'], function(xhr) {
 						for (var idx = 0; idx < resultObj.threads.length; idx++) {						
 							var thread = resultObj.threads[idx];
 							
-							if (thread.id === thisWidget.threadId) {
-								thisWidget.name = thread['target-id'];
-								thisWidget.state = thread.state;
+							if (thread.id === this.threadId) {
+								this.name = thread['target-id'];
+								this.state = thread.state;
 								
-								thisWidget.nameElement.innerHTML = thisWidget.name;
-								thisWidget.stateElement.innerHTML = thisWidget.state;
+								this.nameElement.innerHTML = this.name;
+								this.stateElement.innerHTML = this.state;
 								
 								break;
 							}
 						}
-					}, function(error) {
+					}), function(error) {
 						window.alert("ERROR: "+error.responseText);
 					});
 				},
@@ -394,14 +339,10 @@ define(['orion/xhr'], function(xhr) {
 					// If this thread is stopped (or someone insists that it is selected)
 					//  then try getting the list of stack frames.
 					if (this.state === "stopped" || this.state === "") {
-						var thisWidget = this;
-						
 						// Also we can call to fill in the stack frames
-						xhr("POST", "/handle/frame/stacklist", {
-							headers: {},
-							timeout: 60000,
-							data: JSON.stringify({ThreadId: threadId})
-						}).then(function(result) {
+						myXhr("POST", "/handle/frame/stacklist", {
+							ThreadId: threadId
+						}).then(myCallback(this, function(result) {
 							// We are selected so now we can enable the execution controls
 							executionWidget.enable();
 							
@@ -409,14 +350,14 @@ define(['orion/xhr'], function(xhr) {
 							var stack = resultObj.stack;
 							
 							// TODO turn the stack frames into another widget
-							var innerTable = thisWidget.frameElement.firstChild;
+							var innerTable = this.frameElement.firstChild;
 							
 							if (innerTable) {
-								thisWidget.frameElement.removeChild(innerTable);
+								this.frameElement.removeChild(innerTable);
 							}
 							
 							innerTable = document.createElement("table");
-							thisWidget.frameElement.appendChild(innerTable);
+							this.frameElement.appendChild(innerTable);
 							
 							for (var idx = 0; idx < stack.length; idx++) {
 								var frame = stack[idx];
@@ -424,7 +365,7 @@ define(['orion/xhr'], function(xhr) {
 								var frameWidget = {
 									frame: frame,
 									frameTable: innerTable,
-									threadId: thisWidget.threadId,
+									threadId: this.threadId,
 									
 									init: function() {
 										var frameRow = document.createElement("tr");
@@ -440,41 +381,36 @@ define(['orion/xhr'], function(xhr) {
 										fileColumn.setAttribute("style", "width: 70%;");
 										this.frameTable.appendChild(frameRow);
 										
-										var thisWidget = this;
-										
-										frameRow.addEventListener("click", function(e) {
+										frameRow.addEventListener("click", myCallback(this, function(e) {
 											e.stopPropagation();
 											
-											thisWidget.select();
-										});
+											this.select();
+										}));
 									},
 									
 									select: function() {
-										var thisWidget = this;
 										allVariablesWidget.show();
 											
-										xhr("POST", "/handle/frame/variableslist", {
-											headers: {},
-											timeout: 60000,
-											data: JSON.stringify({AllValues: true, Thread: this.threadId, Frame: this.frame.level})
-										}).then(function(result){
+										myXhr("POST", "/handle/frame/variableslist", {
+											AllValues: true,
+											Thread: this.threadId,
+											Frame: this.frame.level
+										}).then(myCallback(this, function(result){
 											var variables = JSON.parse(result.response).variables;
 											allVariablesWidget.setVariables(variables);
-										}, function(error) {
+										}), function(error) {
 											window.alert("ERROR: "+error.responseText);
 										});
 										
-										xhr("POST", "/handle/file/get", {
-											headers: {},
-											timeout: 60000,
-											data: JSON.stringify({File: this.frame.file})
-										}).then(function(result){
+										myXhr("POST", "/handle/file/get", {
+											File: this.frame.file
+										}).then(myCallback(this, function(result){
 											var text = result.response;
 											var lines = text.split("\n");
 											
 											var html = "";
 											
-											var lineNum = parseInt(thisWidget.frame.line, 10);
+											var lineNum = parseInt(this.frame.line, 10);
 											
 											for (var idx = 1; idx < lines.length+1; idx++) {
 												html = html + "<pre";
@@ -494,7 +430,7 @@ define(['orion/xhr'], function(xhr) {
 											
 											document.getElementById("fileArea").innerHTML = html;
 											document.getElementById("scrolltoLine").scrollIntoView(true);
-										}, function(error) {
+										}), function(error) {
 											//window.alert("ERROR: "+error.responseText);
 										});
 									}
@@ -508,7 +444,7 @@ define(['orion/xhr'], function(xhr) {
 									frameWidget.select();
 								}
 							}
-						}, function(error) {
+						}), function(error) {
 							// The error is likely an indication that this thread was not in fact
 							//  stopped.
 							//window.alert("ERROR: "+error.responseText);
@@ -577,10 +513,8 @@ define(['orion/xhr'], function(xhr) {
 				if (this.selectedThread === "") {
 				
 					// No thread is currently selected. Select this one.
-					xhr("POST", "/handle/thread/select", {
-						headers: {},
-						timeout: 60000,
-						data: JSON.stringify({ThreadId: threadId})
+					myXhr("POST", "/handle/thread/select", {
+						ThreadId: threadId
 					}).then(function(result){
 						allThreadsWidget.selectThread(threadId);
 					}, function(error) {
@@ -612,10 +546,7 @@ define(['orion/xhr'], function(xhr) {
 	};
 	
 	// Initial list of threads (if any)
-	xhr("POST", "/handle/thread/listids", {
-		headers: {},
-		timeout: 60000,
-		data: "{}"
+	myXhr("POST", "/handle/thread/listids", {
 	}).then(function(result){
 		var resultObj = JSON.parse(result.response);
 		
@@ -640,24 +571,20 @@ define(['orion/xhr'], function(xhr) {
 		breakpointWidgets: {},
 		variablesWidget: allVariablesWidget,
 		
-		init: function() {
-			var thisWidget = this;
-			
-			this.addBreakpointInput.addEventListener("keyup", function(e) {
+		init: function() {			
+			this.addBreakpointInput.addEventListener("keyup", myCallback(this, function(e) {
 				if (e.keyCode === 13) {
-					xhr("POST", "/handle/breakpoint/insert", {
-						headers: {},
-						timeout: 60000,
-						data: JSON.stringify({Location: thisWidget.addBreakpointInput.value})
-					}).then(function(result){
+					myXhr("POST", "/handle/breakpoint/insert", {
+						Location: this.addBreakpointInput.value
+					}).then(myCallback(this, function(result){
 						var resultObj = JSON.parse(result.response);
-						thisWidget.addBreakpoint(resultObj.bkpt);
-						thisWidget.addBreakpointInput.value = "";
-					}, function(error) {
+						this.addBreakpoint(resultObj.bkpt);
+						this.addBreakpointInput.value = "";
+					}), function(error) {
 						window.alert("ERROR: "+error.responseText);
 					});
 				}
-			});
+			}));
 		},
 		
 		addBreakpoint: function(breakpoint) {
@@ -693,42 +620,33 @@ define(['orion/xhr'], function(xhr) {
 						this.row.setAttribute("style", "color: #C0C0C0;");
 					}
 					
-					var thisWidget = this;
-					this.row.addEventListener("click", function(e) {
-						if (thisWidget.enabled === "y") {
-							thisWidget.disable();
+					this.row.addEventListener("click", myCallback(this, function(e) {
+						if (this.enabled === "y") {
+							this.disable();
 						} else {
-							thisWidget.enable();
+							this.enable();
 						}
-					});
+					}));
 				},
 				
 				disable: function() {
-					var thisWidget = this;
-					
-					xhr("POST", "/handle/breakpoint/disable", {
-						headers: {},
-						timeout: 60000,
-						data: JSON.stringify({Breakpoints: [this.id]})
-					}).then(function(result){
-						thisWidget.row.setAttribute("style", "color: grey;");
-						thisWidget.enabled = "n";
-					}, function(error) {
+					myXhr("POST", "/handle/breakpoint/disable", {
+						Breakpoints: [this.id]
+					}).then(myCallback(this, function(result){
+						this.row.setAttribute("style", "color: grey;");
+						this.enabled = "n";
+					}), function(error) {
 						//window.alert("ERROR: "+error.responseText);
 					});
 				},
 				
 				enable: function() {					
-					var thisWidget = this;
-					
-					xhr("POST", "/handle/breakpoint/enable", {
-						headers: {},
-						timeout: 60000,
-						data: JSON.stringify({Breakpoints: [this.id]})
-					}).then(function(result){
-						thisWidget.row.setAttribute("style", "");
-						thisWidget.enabled = "y";
-					}, function(error) {
+					myXhr("POST", "/handle/breakpoint/enable", {
+						Breakpoints: [this.id]
+					}).then(myCallback(this, function(result){
+						this.row.setAttribute("style", "");
+						this.enabled = "y";
+					}), function(error) {
 						//window.alert("ERROR: "+error.responseText);
 					});
 				}
@@ -771,10 +689,7 @@ define(['orion/xhr'], function(xhr) {
 	});
 	
 	// Initial list of breakpoints
-	xhr("POST", "/handle/breakpoint/list", {
-		headers: {},
-		timeout: 60000,
-		data: "{}"
+	myXhr("POST", "/handle/breakpoint/list", {
 	}).then(function(result){
 		var resultObj = JSON.parse(result.response);
 		
