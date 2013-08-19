@@ -157,7 +157,7 @@ define(['orion/xhr'], function(xhr) {
 			}
 		},
 		
-		addVariable: function(variable, expression, recursive) {
+		addVariable: function(variable, expression, parentExpression) {
 			var row = document.createElement("tr");
 			var nameColumn = document.createElement("td");
 			var typeColumn = document.createElement("td");
@@ -169,9 +169,26 @@ define(['orion/xhr'], function(xhr) {
 			// TODO proper escaping of the values
 			var name = variable.name;
 			if (expression) {
-				name = name + " ["+expression+"]";
+				name = expression;
+			} else if (parentExpression) {
+				var dotIdx = name.indexOf(".");
+				
+				if (dotIdx !== -1) {
+					name = "(" + parentExpression + ")" + name.substring(dotIdx);
+				}
 			}
+				
 			nameColumn.innerHTML = name;
+			
+			var thisWidget = this;
+			nameColumn.addEventListener("click", function(e) {
+				var exprInput = thisWidget.newExpressionInput;
+				
+				exprInput.value = name;
+				exprInput.scrollIntoView(true);
+				exprInput.focus();
+			});
+			
 			if (variable.type) {
 				typeColumn.innerHTML = variable.type;
 			}
@@ -179,7 +196,8 @@ define(['orion/xhr'], function(xhr) {
 			
 			this.variablesTable.appendChild(row);
 			
-			if (variable.numchild && variable.numchild !== "0" && !recursive) {				
+			// We only allow one level of traversal for now.
+			if (variable.numchild && variable.numchild !== "0" && !parentExpression) {				
 				var thisWidget = this;
 				xhr("POST", "/handle/variable/listchildren", {
 					headers: {},
@@ -189,7 +207,7 @@ define(['orion/xhr'], function(xhr) {
 					var resultObj = JSON.parse(result.response);
 					
 					for (var idx = 0; idx < resultObj.children.length; idx++) {
-						thisWidget.addVariable(resultObj.children[idx], resultObj.children[idx].expr, true);
+						thisWidget.addVariable(resultObj.children[idx], resultObj.children[idx].expr, expression);
 					}
 				}, function(error) {
 					window.alert("ERROR: "+error.responseText);
