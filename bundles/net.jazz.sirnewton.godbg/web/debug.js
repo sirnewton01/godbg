@@ -6,9 +6,17 @@
 /*browser:true*/
 
 define(['orion/xhr'], function(xhr) {
+	// Handle xhr errors in a uniform way
+	var handleXhrError = function(e) {
+		window.alert("ERROR: "+e.responseText);
+	};
 
 	// Simplified xhr call
 	var myXhr = function(method, path, data) {
+		if (!data) {
+			data = {};
+		}
+		
 		return xhr(method, path, {
 			headers: {},
 			timeout: 60000,
@@ -16,10 +24,27 @@ define(['orion/xhr'], function(xhr) {
 		});
 	};
 	
+	// Callback wrapper that override 'this' for xhr and event listener
 	var myCallback = function(thisPtr, func) {
 		return function(arg) {
 			func.call(thisPtr, arg);
 		};
+	};
+	
+	// Button click xhr callback. 'This' override, then and error are optional.
+	var clickCallback = function(thisPtr, button, method, path, data, then, error) {
+		if (!error) {
+			error = handleXhrError;
+		}
+		if (!then) {
+			then = function(r) {};
+		}
+	
+		button.addEventListener("click", myCallback(thisPtr, function(e) {
+			myXhr(method, path, data).then(
+				myCallback(this, then), 
+				myCallback(this, error));
+		}));
 	};
 	
 	var executionWidget = {		
@@ -31,24 +56,9 @@ define(['orion/xhr'], function(xhr) {
 			// Everything starts off disabled until we are on a stopped thread
 			this.disable();
 
-			this.nextButton.addEventListener("click", function(e) {
-				myXhr("POST", "/handle/exec/next", {
-				}).then(function(result){}, function(error) {
-					window.alert("ERROR: "+error.responseText);
-				});
-			});
-			this.stepButton.addEventListener("click", function(e) {
-				myXhr("POST", "/handle/exec/step", {
-				}).then(function(result){}, function(error) {
-					window.alert("ERROR: "+error.responseText);
-				});
-			});
-			this.continueButton.addEventListener("click", function(e) {
-				myXhr("POST", "/handle/exec/continue", {
-				}).then(function(result){}, function(error) {
-					window.alert("ERROR: "+error.responseText);
-				});
-			});
+			clickCallback(this, this.nextButton, "POST", "/handle/exec/next");
+			clickCallback(this, this.stepButton, "POST", "/handle/exec/step");
+			clickCallback(this, this.continueButton, "POST", "/handle/exec/continue");
 		},
 		
 		enable: function() {
@@ -83,12 +93,8 @@ define(['orion/xhr'], function(xhr) {
 			}).then(function(result){
 				// TODO figure out how to better differentiate between run and continue
 				//runButton.disabled = true;
-			}, function(error) {
-				window.alert("ERROR: "+error.responseText);
-			});
-		}, function(error) {
-			window.alert("ERROR: "+error.responseText);
-		});
+			}, handleXhrError);
+		}, handleXhrError);
 	};
 	
 	runButton.addEventListener("click", runHandler);
@@ -99,22 +105,10 @@ define(['orion/xhr'], function(xhr) {
 	});
 	
 	var interruptButton = document.getElementById("interrupt");
-	interruptButton.addEventListener("click", function(e) {
-		myXhr("POST", "/handle/exec/interrupt", {
-		}).then(function(result){}, function(error) {
-			window.alert("ERROR: "+error.responseText);
-		});
-	});
+	clickCallback(null, interruptButton, "POST", "/handle/exec/interrupt");
 	
 	var exitButton = document.getElementById("exit");
-	exitButton.addEventListener("click", function(e) {
-		myXhr("POST", "/handle/gdb/exit", {
-		}).then(function(result){
-			// TODO shut down the browser window
-		}, function(error) {
-			window.alert("ERROR: "+error.responseText);
-		});
-	});
+	clickCallback(null, exitButton, "POST", "/handle/gdb/exit");
 	
 	var allVariablesWidget = {
 		variablesTable: document.getElementById("variablesTable"),
@@ -133,9 +127,7 @@ define(['orion/xhr'], function(xhr) {
 						var resultObj = JSON.parse(result.response);
 						
 						this.addVariable(resultObj, expression);
-					}), function(error) {
-						window.alert("ERROR: "+error.responseText);
-					});
+					}), handleXhrError);
 				}
 			}));
 		},
@@ -199,9 +191,7 @@ define(['orion/xhr'], function(xhr) {
 					for (var idx = 0; idx < resultObj.children.length; idx++) {
 						this.addVariable(resultObj.children[idx], resultObj.children[idx].expr, expression);
 					}
-				}), function(error) {
-					window.alert("ERROR: "+error.responseText);
-				});
+				}), handleXhrError);
 			}
 		},
 		
@@ -288,15 +278,11 @@ define(['orion/xhr'], function(xhr) {
 					
 					this.threadTable.appendChild(this.row);
 					
-					this.row.addEventListener("click", myCallback(this, function(e) {
-						myXhr("POST", "/handle/thread/select", {
-							ThreadId: this.threadId
-						}).then(myCallback(this, function(result){
-							allThreadsWidget.selectThread(this.threadId);
-						}), function(error) {
-							window.alert("ERROR: "+error.responseText);
-						});
-					}));
+					clickCallback(this, this.row, "POST", "/handle/thread/select", {
+						ThreadId: this.threadId
+					}, function(result) {
+						allThreadsWidget.selectThread(this.threadId);
+					});
 					
 					// Fill in more details about the thread (name, state)
 					myXhr("POST", "/handle/thread/info", {
@@ -320,9 +306,7 @@ define(['orion/xhr'], function(xhr) {
 								break;
 							}
 						}
-					}), function(error) {
-						window.alert("ERROR: "+error.responseText);
-					});
+					}), handleXhrError);
 				},
 				
 				dispose: function() {
@@ -398,9 +382,7 @@ define(['orion/xhr'], function(xhr) {
 										}).then(myCallback(this, function(result){
 											var variables = JSON.parse(result.response).variables;
 											allVariablesWidget.setVariables(variables);
-										}), function(error) {
-											window.alert("ERROR: "+error.responseText);
-										});
+										}), handleXhrError);
 										
 										myXhr("POST", "/handle/file/get", {
 											File: this.frame.file
@@ -517,9 +499,7 @@ define(['orion/xhr'], function(xhr) {
 						ThreadId: threadId
 					}).then(function(result){
 						allThreadsWidget.selectThread(threadId);
-					}, function(error) {
-						window.alert("ERROR: "+error.responseText);
-					});
+					}, handleXhrError);
 				} else if (this.selectedThread === threadId) {
 					// TODO this forces the frames to be updated indirectly through the thread selection mechanism. Perhaps there is a more elegant way?
 					allThreadsWidget.selectThread(threadId);
@@ -560,9 +540,7 @@ define(['orion/xhr'], function(xhr) {
 		if (currentThreadId !== "") {
 			allThreadsWidget.selectThread(currentThreadId);
 		}
-	}, function(error) {
-		window.alert("ERROR: "+error.responseText);
-	});
+	}, handleXhrError);
 	
 	var allBreakpointsWidget = {
 		breakpointsTable: document.getElementById("breakpointTable"),
@@ -580,9 +558,7 @@ define(['orion/xhr'], function(xhr) {
 						var resultObj = JSON.parse(result.response);
 						this.addBreakpoint(resultObj.bkpt);
 						this.addBreakpointInput.value = "";
-					}), function(error) {
-						window.alert("ERROR: "+error.responseText);
-					});
+					}), handleXhrError);
 				}
 			}));
 		},
@@ -698,9 +674,7 @@ define(['orion/xhr'], function(xhr) {
 		for (var idx = 0 ; idx < bps.length; idx++) {
 			allBreakpointsWidget.addBreakpoint(bps[idx]);
 		}
-	}, function(error) {
-		window.alert("ERROR: "+error.responseText);
-	});
+	}, handleXhrError);
 	
 	var outputArea = document.getElementById("outputArea");
 	
