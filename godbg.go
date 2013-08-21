@@ -15,7 +15,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"time"
+	"path/filepath"
 )
 
 type chainedFileSystem struct {
@@ -47,15 +49,50 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 
 func main() {
 	gopath := build.Default.GOPATH
-
-	if len(os.Args) != 3 {
-		fmt.Printf("Insufficient number of arguments.\nUsage: godbg <path_to_executable> <path_to_src_folder>\n")
+	
+	if gopath == "" {
+		fmt.Printf("Please set the GOPATH and re-run.\n")
 		return
 	}
+	
+	execPath := ""
+	srcDir := ""
+	
+	// User has provided the source path and it appears to be a Go program.
+	// We will compile/recompile it with the correct flags.
+	if len(os.Args) == 2 {	
+		pkgPath := os.Args[1]
+		srcDir = filepath.Join(gopath, "src", pkgPath)
+		
+		execPath = filepath.Join(gopath, "bin", filepath.Base(pkgPath))
+		os.Remove(execPath)
+		execFile, _ := os.Open(execPath)
+		if execFile != nil {
+			_, err := execFile.Stat()
+			if err == nil {
+				fmt.Printf("Could not clean existing binary in order to recompile with debug flags. %v\n", execPath);
+				return
+			}
+		}
+		
+		cmd := exec.Command("go", "install" , "-gcflags", "-N -l", pkgPath)
+		msg, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg));
+			return
+		}
+	} else {
+		if len(os.Args) != 3 {
+			fmt.Printf("Incorrect arguments.\nUsage: godbg (<go_pkg_qualified_name>) | (<path_to_executable> <path_to_src_folder>)\n")
+			return
+		}
+		
+		// In this mode we are trusting the user to provide valid paths for source and executable
+		execPath = os.Args[1];
+		srcDir = os.Args[2];
+	}
 
-	// TODO validate the input parameters (executable, exists, etc.)
-
-	mygdb, err := gdblib.NewGDB(os.Args[1], os.Args[2])
+	mygdb, err := gdblib.NewGDB(execPath, srcDir)
 	if err != nil {
 		panic(err)
 	}
