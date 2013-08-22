@@ -507,6 +507,17 @@ define(['orion/xhr'], function(xhr) {
 			}
 		},
 		
+		handleAllThreadsStopped: function(currentThread) {
+			// Mark the current thread as stopped first
+			this.handleThreadStopped(currentThread);
+			
+			for (var threadId in this.threadWidgets) {
+				if (currentThread !== threadId) {
+					this.handleThreadStopped(threadId);
+				}
+			}
+		},
+		
 		handleThreadRunning: function(threadId) {
 			var threadWidget = this.threadWidgets[threadId];
 			
@@ -517,6 +528,17 @@ define(['orion/xhr'], function(xhr) {
 				// Time to disable the execution controls.
 				if (this.selectedThread === threadId) {
 					executionWidget.disable();
+				}
+			}
+		},
+		
+		handleAllThreadsRunning: function(currentThread) {
+			// Mark the current thread as stopped first
+			this.handleThreadRunning(currentThread);
+			
+			for (var threadId in this.threadWidgets) {
+				if (currentThread !== threadId) {
+					this.handleThreadRunning(threadId);
 				}
 			}
 		},
@@ -728,12 +750,26 @@ define(['orion/xhr'], function(xhr) {
 				allThreadsWidget.selectThread(threadId);
 			} else if (record.Indication === "stopped") {
 				var threadId = record.Result['thread-id'];
+				var stoppedThreads = record.Result['stopped-threads'];
 				
-				allThreadsWidget.handleThreadStopped(threadId);
+				// All threads are stopped in all-stop mode
+				if ((stoppedThreads && stoppedThreads === "all") || threadId === "all") {
+					allThreadsWidget.handleAllThreadsStopped(threadId);
+				} else {
+				// In non-stop mode one thread can be stopped while the others keep running
+					allThreadsWidget.handleThreadStopped(threadId);
+				}
 			} else if (record.Indication === "running") {
 				var threadId = record.Result['thread-id'];
+				var stoppedThreads = record.Result['stopped-threads'];
 				
-				allThreadsWidget.handleThreadRunning(threadId);
+				// All threads are now running
+				if ((stoppedThreads && stoppedThreads === "all") || threadId === "all") {
+					allThreadsWidget.handleAllThreadsRunning(threadId);
+				} else {
+				// Just one thread is running
+					allThreadsWidget.handleThreadRunning(threadId);
+				}
 			}
 		}
 	};
