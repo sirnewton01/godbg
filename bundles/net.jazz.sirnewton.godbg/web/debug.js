@@ -475,7 +475,9 @@ define(['orion/xhr'], function(xhr) {
 			this.selectedThread = threadId;
 			
 			for (var key in this.threadWidgets) {
-				this.threadWidgets[key].deselect();
+				if (this.threadWidgets[key]) {
+					this.threadWidgets[key].deselect();
+				}
 			}
 			executionWidget.disable();
 		
