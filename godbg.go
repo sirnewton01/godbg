@@ -191,8 +191,7 @@ func main() {
 		}
 		
 		serverAddrChan <- listener.Addr().String()
-		
-		fmt.Printf("Server started\n")
+
 		http.Serve(listener, nil)
 	}()
 
@@ -205,8 +204,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Printf("Server finished\n")
 }
 
 func addThreadHandlers(mygdb *gdblib.GDB) {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 func openBrowser(url string) {
@@ -30,6 +31,7 @@ func openBrowser(url string) {
 	// Free desktop spec indicates that xdg-open should open any arbitrary provided URL
 	//  on the local machine using the user's preferred browser.
 	cmd := exec.Command("xdg-open", url)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	err := cmd.Run()
 	if err != nil {
 		fmt.Printf("%v\n", url)
