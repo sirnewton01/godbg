@@ -417,7 +417,10 @@ define(['orion/xhr'], function(xhr) {
 								}).then(myCallback(this, function(result){
 									var variables = JSON.parse(result.response).variables;
 									allVariablesWidget.setVariables(variables);
-								}), handleXhrError);
+								}), function(error) {
+									// Ignore errors on the variables list.
+									// TODO Should we invalidate the parent thread or frame somehow?
+								});
 
 								myXhr("POST", "/handle/file/get", {
 									File: this.frame.file
