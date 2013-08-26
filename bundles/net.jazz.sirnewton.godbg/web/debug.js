@@ -59,6 +59,21 @@ define(['orion/xhr'], function(xhr) {
 			clickCallback(this, this.nextButton, "POST", "/handle/exec/next");
 			clickCallback(this, this.stepButton, "POST", "/handle/exec/step");
 			clickCallback(this, this.continueButton, "POST", "/handle/exec/continue");
+			
+			document.addEventListener("keydown", myCallback(this, function(e) {
+				if (this.isEnabled() && e.target.nodeName.toLowerCase() !== "input") {
+					// 's' - Step
+					if (e.keyCode === 83) {
+						myXhr("POST", "/handle/exec/step").then(function(r) {}, handleXhrError);
+					// 'n' - Next
+					} else if (e.keyCode === 78) {
+						myXhr("POST", "/handle/exec/next").then(function(r) {}, handleXhrError);
+					// 'c' - Continue
+					} else if (e.keyCode === 67) {
+						myXhr("POST", "/handle/exec/continue").then(function(r) {}, handleXhrError);
+					}
+				}
+			}));
 		},
 		
 		enable: function() {
@@ -74,7 +89,7 @@ define(['orion/xhr'], function(xhr) {
 		},
 		
 		isEnabled: function() {
-			return this.nextButton.disabled;
+			return !this.nextButton.disabled;
 		}
 	};
 	
@@ -257,6 +272,10 @@ define(['orion/xhr'], function(xhr) {
 				name: "",
 				state: "",
 				
+				selectedFrame: "0",
+				
+				frameWidgets: [],
+				
 				init: function() {
 					this.row = document.createElement("tr");
 					
@@ -265,13 +284,11 @@ define(['orion/xhr'], function(xhr) {
 					this.idElement = document.createElement("td");
 					this.selectedElement = document.createElement("td");
 					this.nameElement = document.createElement("td");
-					this.stateElement = document.createElement("td");
 					this.frameElement = document.createElement("td");
 					
 					this.row.appendChild(this.idElement);
 					this.row.appendChild(this.selectedElement);
 					this.row.appendChild(this.nameElement);
-					this.row.appendChild(this.stateElement);
 					this.row.appendChild(this.frameElement);
 					
 					this.idElement.innerHTML = threadId;
@@ -301,7 +318,9 @@ define(['orion/xhr'], function(xhr) {
 								this.state = thread.state;
 								
 								this.nameElement.innerHTML = this.name;
-								this.stateElement.innerHTML = this.state;
+								
+								// Fill in the top-level of the stack
+								this.setStack([thread.frame]);
 								
 								break;
 							}
@@ -320,131 +339,170 @@ define(['orion/xhr'], function(xhr) {
 					// Clear any variables in the variables view
 					allVariablesWidget.clearVariables();
 					
-					// If this thread is stopped (or someone insists that it is selected)
-					//  then try getting the list of stack frames.
-					if (this.state === "stopped" || this.state === "") {
-						// Also we can call to fill in the stack frames
-						myXhr("POST", "/handle/frame/stacklist", {
-							ThreadId: threadId
-						}).then(myCallback(this, function(result) {
-							// We are selected so now we can enable the execution controls
-							executionWidget.enable();
-							
-							var resultObj = JSON.parse(result.response);
-							var stack = resultObj.stack;
-							
-							// TODO turn the stack frames into another widget
-							var innerTable = this.frameElement.firstChild;
-							
-							if (innerTable) {
-								this.frameElement.removeChild(innerTable);
-							}
-							
-							innerTable = document.createElement("table");
-							this.frameElement.appendChild(innerTable);
-							
-							for (var idx = 0; idx < stack.length; idx++) {
-								var frame = stack[idx];
-								
-								var frameWidget = {
-									frame: frame,
-									frameTable: innerTable,
-									threadId: this.threadId,
-									
-									init: function() {
-										var frameRow = document.createElement("tr");
-										var funcColumn = document.createElement("td");
-										var fileColumn = document.createElement("td");
-										frameRow.appendChild(funcColumn);
-										frameRow.appendChild(fileColumn);
-										funcColumn.innerHTML = frame.func;
-										funcColumn.setAttribute("style", "width: 30%;");
-										if (frame.file !== "") {
-											fileColumn.innerHTML = this.frame.file + ":" + this.frame.line;
-										}
-										fileColumn.setAttribute("style", "width: 70%;");
-										this.frameTable.appendChild(frameRow);
-										
-										frameRow.addEventListener("click", myCallback(this, function(e) {
-											e.stopPropagation();
-											
-											this.select();
-										}));
-									},
-									
-									select: function() {
-										allVariablesWidget.show();
-											
-										myXhr("POST", "/handle/frame/variableslist", {
-											AllValues: true,
-											Thread: this.threadId,
-											Frame: this.frame.level
-										}).then(myCallback(this, function(result){
-											var variables = JSON.parse(result.response).variables;
-											allVariablesWidget.setVariables(variables);
-										}), handleXhrError);
-										
-										myXhr("POST", "/handle/file/get", {
-											File: this.frame.file
-										}).then(myCallback(this, function(result){
-											var text = result.response;
-											var lines = text.split("\n");
-											
-											var html = "";
-											
-											var lineNum = parseInt(this.frame.line, 10);
-											
-											for (var idx = 1; idx < lines.length+1; idx++) {
-												html = html + "<pre";
-											
-												if (idx === lineNum) {
-													html = html + ' style="background-color: yellow; margin-bottom: 0px; margin-top: 0px;"';
-												} else {
-													html = html + ' style="margin-bottom: 0px; margin-top: 0px;"';
-												}
-												
-												if (idx === lineNum - 10 || (idx === 0 && lineNum <= 10)) {
-													html = html + ' id="scrolltoLine"';
-												}
-												
-												html = html + ">" + idx + ": "+ lines[idx-1] + "</pre>";
-											}
-											
-											document.getElementById("fileArea").innerHTML = html;
-											document.getElementById("scrolltoLine").scrollIntoView(true);
-										}), function(error) {
-											//window.alert("ERROR: "+error.responseText);
-										});
-									}
-								};
-								
-								frameWidget.init();
-								
-								// When selecting the thread we automatically select the top-most frame to show
-								//  its variables, highlight the line in the file, etc.
-								if (idx === 0) {
-									frameWidget.select();
+					// We are selected so now we can enable the execution controls now
+					executionWidget.enable();
+					
+					// Fill in the stack
+					myXhr("POST", "/handle/frame/stacklist", {
+						ThreadId: threadId
+					}).then(myCallback(this, function(result) {
+						var resultObj = JSON.parse(result.response);
+						var stack = resultObj.stack;
+						
+						this.setStack(stack);
+					}), function(error) {
+						// The error is likely an indication that this thread was not in fact
+						//  stopped.
+						//window.alert("ERROR: "+error.responseText);
+					});
+				},
+				
+				setStack: function(stack) {
+					// TODO turn the stack frames into another widget
+					var innerTable = this.frameElement.firstChild;
+					
+					if (innerTable) {
+						this.frameElement.removeChild(innerTable);
+					}
+					
+					this.frameWidgets = [];
+					
+					innerTable = document.createElement("table");
+					innerTable.setAttribute("cellpadding", "0px");
+					innerTable.setAttribute("cellspacing", "0px");
+					innerTable.setAttribute("style", "width: 100%;");
+					this.frameElement.appendChild(innerTable);
+
+					for (var idx = 0; idx < stack.length; idx++) {
+						var frame = stack[idx];
+	
+						var frameWidget = {
+							threadWidget: this,
+							frame: frame,
+							frameTable: innerTable,
+							threadId: this.threadId,
+							row: null,
+
+							init: function() {
+								this.row = document.createElement("tr");
+								var funcColumn = document.createElement("td");
+								var fileColumn = document.createElement("td");
+								this.row.appendChild(funcColumn);
+								this.row.appendChild(fileColumn);
+								funcColumn.innerHTML = frame.func;
+								funcColumn.setAttribute("style", "width: 50%; padding: 0px 10px 0px 0px;");
+								if (frame.file !== "") {
+									fileColumn.innerHTML = this.trimFile(this.frame.file) + ":" + this.frame.line;
 								}
+								fileColumn.setAttribute("style", "width: 50%;");
+								this.frameTable.appendChild(this.row);
+
+								this.row.addEventListener("click", myCallback(this, function(e) {
+									var level = this.frame.level;
+									if (!level) {
+										level = 0;
+									}
+									
+									this.threadWidget.selectedFrame = level;
+								}));
+							},
+
+							select: function() {
+								allVariablesWidget.show();
+
+								myXhr("POST", "/handle/frame/variableslist", {
+									AllValues: true,
+									Thread: this.threadId,
+									Frame: this.frame.level
+								}).then(myCallback(this, function(result){
+									var variables = JSON.parse(result.response).variables;
+									allVariablesWidget.setVariables(variables);
+								}), handleXhrError);
+
+								myXhr("POST", "/handle/file/get", {
+									File: this.frame.file
+								}).then(myCallback(this, function(result){
+									var text = result.response;
+									var lines = text.split("\n");
+
+									var html = "";
+
+									var lineNum = parseInt(this.frame.line, 10);
+
+									for (var idx = 1; idx < lines.length+1; idx++) {
+										html = html + "<pre";
+
+										if (idx === lineNum) {
+											html = html + ' style="background-color: yellow; margin-bottom: 0px; margin-top: 0px;"';
+										} else {
+											html = html + ' style="margin-bottom: 0px; margin-top: 0px;"';
+										}
+
+										if (idx === lineNum - 10 || (idx === 0 && lineNum <= 10)) {
+											html = html + ' id="scrolltoLine"';
+										}
+
+										html = html + ">" + idx + ": "+ lines[idx-1] + "</pre>";
+									}
+
+									document.getElementById("fileArea").innerHTML = html;
+									document.getElementById("scrolltoLine").scrollIntoView(true);
+								}), function(error) {
+									//window.alert("ERROR: "+error.responseText);
+								});
+							},
+							
+							dispose: function() {
+								this.frameTable.removeChild(this.row);
+							},
+							
+							trimFile: function(fullpath) {
+								var lastSegment = fullpath.lastIndexOf("/");
+								
+								if (lastSegment !== -1 && lastSegment < fullpath.length-1) {
+									fullpath = fullpath.substring(lastSegment+1);
+								}
+								
+								lastSegment = fullpath.lastIndexOf("\\");
+								
+								if (lastSegment !== -1 && lastSegment < fullpath.length-1) {
+									fullpath = fullpath.substring(lastSegment+1);
+								}
+								
+								return fullpath;
 							}
-						}), function(error) {
-							// The error is likely an indication that this thread was not in fact
-							//  stopped.
-							//window.alert("ERROR: "+error.responseText);
-						});
+						};
+
+						frameWidget.init();
+						
+						this.frameWidgets.push(frameWidget);
+
+						// When selecting the thread we select the previously selected
+						//  frame.
+						if (""+idx === this.selectedFrame) {
+							frameWidget.select();
+						}
 					}
 				},
 				
 				deselect: function() {
 					this.row.setAttribute("style", this.row.getAttribute("style").replace("font-weight: bold;", ""));
+					
+					// Remove all of the frames except for the top one
+					for (var idx = 1; idx < this.frameWidgets.length; idx++) {
+						this.frameWidgets[idx].dispose();
+					}
+					
+					if (this.frameWidgets.length > 0) {
+						this.frameWidgets = [this.frameWidgets[0]];
+					}
 				},
 				
 				stopped: function() {
-					this.stateElement.innerHTML = "stopped";
 					this.state = "stopped";
 				},
 				
 				running: function() {
-					this.stateElement.innerHTML = "running";
 					this.state = "running";
 					
 					if (this.frameElement.firstChild) {
@@ -452,6 +510,7 @@ define(['orion/xhr'], function(xhr) {
 					}
 				}
 			};
+			
 			this.threadWidgets[threadId] = threadWidget;
 			threadWidget.init();
 		},
@@ -463,11 +522,6 @@ define(['orion/xhr'], function(xhr) {
 				threadWidget.dispose();
 				
 				this.threadWidgets[threadId] = null;
-				
-				if (threadId === this.selectedThread) {
-					this.selectedThread = "";
-					executionWidget.disable();
-				}
 			}
 		},
 		
@@ -477,9 +531,14 @@ define(['orion/xhr'], function(xhr) {
 			for (var key in this.threadWidgets) {
 				if (this.threadWidgets[key]) {
 					this.threadWidgets[key].deselect();
+					
+					// If the thread is not the selected one then
+					//  the frame gets reset to the top-most one
+					if (key !== threadId) {
+						this.threadWidgets[key].selectedFrame = "0";
+					}
 				}
 			}
-			executionWidget.disable();
 		
 			var threadWidget = this.threadWidgets[threadId];
 			
@@ -488,59 +547,44 @@ define(['orion/xhr'], function(xhr) {
 			}
 		},
 		
-		handleThreadStopped: function(threadId) {
-			var threadWidget = this.threadWidgets[threadId];
-			
-			if (threadWidget) {
-				threadWidget.stopped();
-				
-				if (this.selectedThread === "") {
-				
-					// No thread is currently selected. Select this one.
-					myXhr("POST", "/handle/thread/select", {
-						ThreadId: threadId
-					}).then(function(result){
-						allThreadsWidget.selectThread(threadId);
-					}, handleXhrError);
-				} else if (this.selectedThread === threadId) {
-					// TODO this forces the frames to be updated indirectly through the thread selection mechanism. Perhaps there is a more elegant way?
-					allThreadsWidget.selectThread(threadId);
-				}
-			}
-		},
-		
 		handleAllThreadsStopped: function(currentThread) {
-			// Mark the current thread as stopped first
-			this.handleThreadStopped(currentThread);
-			
-			for (var threadId in this.threadWidgets) {
-				if (currentThread !== threadId) {
-					this.handleThreadStopped(threadId);
-				}
+			if (currentThread !== "all") {
+				this.addThread(currentThread);
+				this.selectThread(currentThread);
 			}
-		},
 		
-		handleThreadRunning: function(threadId) {
-			var threadWidget = this.threadWidgets[threadId];
+			var thisWidget = this;
 			
-			if (threadWidget) {
-				threadWidget.running();
+			// Get all of the threads and add them
+			// TODO convert this into /handle/thread/list
+			myXhr("POST", "/handle/thread/listids", {
+			// TODO Fix the callback to use "this" instead of "thisWidget"
+			}).then(function(result){
+				var resultObj = JSON.parse(result.response);
 				
-				// The thread we were stopped on and selected is now running.
-				// Time to disable the execution controls.
-				if (this.selectedThread === threadId) {
-					executionWidget.disable();
+				var threadIds = resultObj["thread-ids"];
+				var currentThreadId = resultObj["current-thread-id"];
+				
+				for (var idx = 0; idx < threadIds.length; idx++) {
+					thisWidget.addThread(threadIds[idx]);
 				}
-			}
+				
+				if (currentThreadId !== "") {
+					thisWidget.selectThread(currentThreadId);
+				}
+			}, handleXhrError);
 		},
 		
 		handleAllThreadsRunning: function(currentThread) {
-			// Mark the current thread as stopped first
-			this.handleThreadRunning(currentThread);
+			// Time to disable the execution controls since the threads are now running.
+			executionWidget.disable();
 			
+			this.selectedThread = "";
+			
+			// Remove all of the threads
 			for (var threadId in this.threadWidgets) {
-				if (currentThread !== threadId) {
-					this.handleThreadRunning(threadId);
+				if (threadId) {
+					this.removeThread(threadId);
 				}
 			}
 		},
@@ -548,23 +592,6 @@ define(['orion/xhr'], function(xhr) {
 		disable: function() {
 		}
 	};
-	
-	// Initial list of threads (if any)
-	myXhr("POST", "/handle/thread/listids", {
-	}).then(function(result){
-		var resultObj = JSON.parse(result.response);
-		
-		var threadIds = resultObj["thread-ids"];
-		var currentThreadId = resultObj["current-thread-id"];
-		
-		for (var idx = 0; idx < threadIds.length; idx++) {
-			allThreadsWidget.addThread(threadIds[idx]);
-		}
-		
-		if (currentThreadId !== "") {
-			allThreadsWidget.selectThread(currentThreadId);
-		}
-	}, handleXhrError);
 	
 	var allBreakpointsWidget = {
 		breakpointsTable: document.getElementById("breakpointTable"),
@@ -737,41 +764,22 @@ define(['orion/xhr'], function(xhr) {
 			
 			var record = event.Data;
 			
-			// Thread created event
-			if (record.Indication === "thread-created") {
-				var threadId = record.Result.id;
-				
-				allThreadsWidget.addThread(threadId);
-			} else if (record.Indication === "thread-exited") {
-				var threadId = record.Result.id;
-				
-				allThreadsWidget.removeThread(threadId);
-			} else if (record.Indication === "thread-selected") {
+			if (record.Indication === "thread-selected") {
 				var threadId = record.Result.id;
 				
 				allThreadsWidget.selectThread(threadId);
 			} else if (record.Indication === "stopped") {
 				var threadId = record.Result['thread-id'];
-				var stoppedThreads = record.Result['stopped-threads'];
 				
-				// All threads are stopped in all-stop mode
-				if ((stoppedThreads && stoppedThreads === "all") || threadId === "all") {
+				if (record.Result.reason && record.Result.reason.substring(0,6) !== "exited") {
+					// All threads are stopped in all-stop mode
 					allThreadsWidget.handleAllThreadsStopped(threadId);
-				} else {
-				// In non-stop mode one thread can be stopped while the others keep running
-					allThreadsWidget.handleThreadStopped(threadId);
 				}
 			} else if (record.Indication === "running") {
 				var threadId = record.Result['thread-id'];
-				var stoppedThreads = record.Result['stopped-threads'];
 				
 				// All threads are now running
-				if ((stoppedThreads && stoppedThreads === "all") || threadId === "all") {
-					allThreadsWidget.handleAllThreadsRunning(threadId);
-				} else {
-				// Just one thread is running
-					allThreadsWidget.handleThreadRunning(threadId);
-				}
+				allThreadsWidget.handleAllThreadsRunning(threadId);
 			}
 		}
 	};
