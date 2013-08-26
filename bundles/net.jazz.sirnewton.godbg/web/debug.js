@@ -320,7 +320,7 @@ define(['orion/xhr'], function(xhr) {
 								this.nameElement.innerHTML = this.name;
 								
 								// Fill in the top-level of the stack
-								this.setStack([thread.frame]);
+								this.setStack([thread.frame], false);
 								
 								break;
 							}
@@ -349,7 +349,7 @@ define(['orion/xhr'], function(xhr) {
 						var resultObj = JSON.parse(result.response);
 						var stack = resultObj.stack;
 						
-						this.setStack(stack);
+						this.setStack(stack, true);
 					}), function(error) {
 						// The error is likely an indication that this thread was not in fact
 						//  stopped.
@@ -357,7 +357,7 @@ define(['orion/xhr'], function(xhr) {
 					});
 				},
 				
-				setStack: function(stack) {
+				setStack: function(stack, threadIsSelected) {
 					// TODO turn the stack frames into another widget
 					var innerTable = this.frameElement.firstChild;
 					
@@ -482,7 +482,7 @@ define(['orion/xhr'], function(xhr) {
 
 						// When selecting the thread we select the previously selected
 						//  frame.
-						if (""+idx === this.selectedFrame) {
+						if (threadIsSelected && ""+idx === this.selectedFrame) {
 							frameWidget.select();
 						}
 					}
