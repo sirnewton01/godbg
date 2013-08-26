@@ -496,10 +496,8 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 
 		decoder := json.NewDecoder(r.Body)
 		err := decoder.Decode(&parms)
-
-		if err == nil {
-			err = mygdb.ExecInterrupt(parms)
-		}
+		
+		mygdb.ExecInterrupt(parms)
 
 		if err != nil {
 			w.WriteHeader(400)
