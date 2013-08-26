@@ -392,7 +392,24 @@ define(['orion/xhr'], function(xhr) {
 								funcColumn.innerHTML = frame.func;
 								funcColumn.setAttribute("style", "width: 50%; padding: 0px 10px 0px 0px;");
 								if (frame.file !== "") {
-									fileColumn.innerHTML = this.trimFile(this.frame.file) + ":" + this.frame.line;
+									var compact = document.createElement("div");
+									var full = document.createElement("div");
+									full.setAttribute("style", "display: none;");
+									
+									compact.innerHTML = this.trimFile(this.frame.file) + ":" + this.frame.line;
+									full.innerHTML = this.frame.file + ":" + this.frame.line;
+									
+									fileColumn.appendChild(compact);
+									fileColumn.appendChild(full);
+									
+									fileColumn.addEventListener("mouseover", function(e) {
+										compact.setAttribute("style", "display: none;");
+										full.setAttribute("style", "");
+									});
+									fileColumn.addEventListener("mouseout", function(e) {
+										full.setAttribute("style", "display: none;");
+										compact.setAttribute("style", "");
+									});
 								}
 								fileColumn.setAttribute("style", "width: 50%;");
 								this.frameTable.appendChild(this.row);
