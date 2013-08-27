@@ -222,7 +222,6 @@ func main() {
 	}()
 	
 	execArgs := flag.Args()[1:]
-	fmt.Printf("ARGS: %v\n", execArgs)
 	mygdb.ExecArgs(gdblib.ExecArgsParms{strings.Join(execArgs, " ")})
 	mygdb.ExecRun(gdblib.ExecRunParms{})
 
