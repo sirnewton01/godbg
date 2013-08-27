@@ -18,6 +18,8 @@ import (
 	"os/exec"
 	"time"
 	"path/filepath"
+	"flag"
+	"strings"
 )
 
 type chainedFileSystem struct {
@@ -47,52 +49,71 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 	return nil, nil
 }
 
+var(
+	srcDir *string
+)
+
+func init() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <executable|go package name> [arguments...]\n", os.Args[0])
+		flag.PrintDefaults()
+	};
+	srcDir = flag.String("srcDir", "", "Location of the source code for the executable")
+	
+	flag.Parse()
+}
+
 func main() {
 	gopath := build.Default.GOPATH
 	
 	if gopath == "" {
-		fmt.Printf("Please set the GOPATH and re-run.\n")
+		fmt.Fprintf(os.Stderr, "Please set the GOPATH and re-run.\n")
 		return
 	}
 	
-	execPath := ""
-	srcDir := ""
+	if flag.NArg() < 1 {
+		flag.Usage()
+		return
+	}
 	
-	// User has provided the source path and it appears to be a Go program.
-	// We will compile/recompile it with the correct flags.
-	if len(os.Args) == 2 {	
-		pkgPath := os.Args[1]
-		srcDir = filepath.Join(gopath, "src", pkgPath)
+	execPath := flag.Arg(0)
+	
+	// Check to see if the executable path is really a go package that
+	//  exists in the gopath's source directory
+	if !filepath.IsAbs(execPath) {
+		pkgPath := execPath
+		pkgSrcDir := filepath.Join(gopath, "src", pkgPath)
 		
-		execPath = filepath.Join(gopath, "bin", filepath.Base(pkgPath))
-		os.Remove(execPath)
-		execFile, _ := os.Open(execPath)
-		if execFile != nil {
-			_, err := execFile.Stat()
+		pkgFile, _ := os.Open(pkgSrcDir)
+		if pkgFile != nil {
+			_, err := pkgFile.Stat()
 			if err == nil {
-				fmt.Printf("Could not clean existing binary in order to recompile with debug flags. %v\n", execPath);
-				return
+				if *srcDir == "" {
+					srcDir = &pkgSrcDir
+				}
+				
+				execPath = filepath.Join(gopath, "bin", filepath.Base(pkgPath))
+				os.Remove(execPath)
+				execFile, _ := os.Open(execPath)
+				if execFile != nil {
+					_, err := execFile.Stat()
+					if err == nil {
+						fmt.Fprintf(os.Stderr, "Could not clean existing binary in order to recompile with debug flags. %v\n", execPath);
+						return
+					}
+				}
+				
+				cmd := exec.Command("go", "install" , "-gcflags", "-N -l", pkgPath)
+				msg, err := cmd.CombinedOutput()
+				if err != nil {
+					fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg));
+					return
+				}
 			}
 		}
-		
-		cmd := exec.Command("go", "install" , "-gcflags", "-N -l", pkgPath)
-		msg, err := cmd.CombinedOutput()
-		if err != nil {
-			fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg));
-			return
-		}
-	} else {
-		if len(os.Args) != 3 {
-			fmt.Printf("Incorrect arguments.\nUsage: godbg (<go_pkg_qualified_name>) | (<path_to_executable> <path_to_src_folder>)\n")
-			return
-		}
-		
-		// In this mode we are trusting the user to provide valid paths for source and executable
-		execPath = os.Args[1];
-		srcDir = os.Args[2];
 	}
 
-	mygdb, err := gdblib.NewGDB(execPath, srcDir)
+	mygdb, err := gdblib.NewGDB(execPath, *srcDir)
 	if err != nil {
 		panic(err)
 	}
@@ -199,6 +220,11 @@ func main() {
 		serverAddr := <- serverAddrChan
 		openBrowser("http://"+serverAddr)
 	}()
+	
+	execArgs := flag.Args()[1:]
+	fmt.Printf("ARGS: %v\n", execArgs)
+	mygdb.ExecArgs(gdblib.ExecArgsParms{strings.Join(execArgs, " ")})
+	mygdb.ExecRun(gdblib.ExecRunParms{})
 
 	err = mygdb.Wait()
 	if err != nil {

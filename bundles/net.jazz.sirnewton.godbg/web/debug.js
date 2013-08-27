@@ -95,30 +95,6 @@ define(['orion/xhr'], function(xhr) {
 	
 	executionWidget.init();
 	
-	var runButton = document.getElementById("run");
-	var runArgsInput = document.getElementById("runArgs");
-	
-	var runHandler = function(e) {
-		// Set the arguments and then run on the callback unless there is an
-		//  error.
-		myXhr("POST", "/handle/exec/args", {
-			Args: runArgsInput.value
-		}).then(function(result){
-			myXhr("POST", "/handle/exec/run", {
-			}).then(function(result){
-				// TODO figure out how to better differentiate between run and continue
-				//runButton.disabled = true;
-			}, handleXhrError);
-		}, handleXhrError);
-	};
-	
-	runButton.addEventListener("click", runHandler);
-	runArgsInput.addEventListener("keyup", function(e) {
-		if (e.keyCode === 13) {
-			runHandler(e);
-		}
-	});
-	
 	var interruptButton = document.getElementById("interrupt");
 	clickCallback(null, interruptButton, "POST", "/handle/exec/interrupt");
 	
@@ -761,7 +737,6 @@ define(['orion/xhr'], function(xhr) {
 		allBreakpointsWidget.disable();
 		allThreadsWidget.disable();
 		executionWidget.disable();
-		runButton.disabled = true;
 		interruptButton.disabled = true;
 		exitButton.disabled = true;
 	};
