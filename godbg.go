@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"flag"
 	"strings"
+	"runtime"
 )
 
 type chainedFileSystem struct {
@@ -51,6 +52,9 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 
 var(
 	srcDir *string
+	gopath string
+	goroot string
+	cwd string
 )
 
 func init() {
@@ -61,11 +65,13 @@ func init() {
 	srcDir = flag.String("srcDir", "", "Location of the source code for the executable")
 	
 	flag.Parse()
+	
+	gopath = build.Default.GOPATH
+	goroot = runtime.GOROOT()
+	cwd, _ = os.Getwd()
 }
 
 func main() {
-	gopath := build.Default.GOPATH
-	
 	if gopath == "" {
 		fmt.Fprintf(os.Stderr, "Please set the GOPATH and re-run.\n")
 		return
@@ -407,8 +413,19 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 
-		// FIXME verify that the path resides in the GOPATH or GOROOT before passing back the results
-		file, err := os.Open(parms["File"])
+		path := parms["File"]
+		path, err = filepath.Abs(path)
+		
+		// If the path is not under the current directory or in the GOPATH/GOROOT then it is an illegal access
+		if !strings.HasPrefix(path, gopath) && 
+			!strings.HasPrefix(path, cwd) &&
+			!strings.HasPrefix(path, goroot) {
+			
+			w.WriteHeader(400)
+			w.Write([]byte("Illegal file access"))
+		}
+		
+		file, err := os.Open(path)
 
 		if err != nil {
 			w.WriteHeader(500)
