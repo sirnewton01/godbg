@@ -414,6 +414,13 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 		}
 
 		path := parms["File"]
+		
+		if path == "" {
+			w.WriteHeader(400)
+			w.Write([]byte("No path provided"))
+			return
+		}
+		
 		path, err = filepath.Abs(path)
 		
 		// If the path is not under the current directory or in the GOPATH/GOROOT then it is an illegal access
@@ -423,6 +430,7 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 			
 			w.WriteHeader(400)
 			w.Write([]byte("Illegal file access"))
+			return
 		}
 		
 		file, err := os.Open(path)
