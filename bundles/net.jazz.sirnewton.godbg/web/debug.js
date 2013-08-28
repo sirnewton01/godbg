@@ -428,8 +428,10 @@ define(['orion/xhr'], function(xhr) {
 
 									document.getElementById("fileArea").innerHTML = html;
 									document.getElementById("scrolltoLine").scrollIntoView(true);
+									document.getElementById("filePath").innerHTML = this.frame.file;
 								}), function(error) {
 									document.getElementById("fileArea").innerHTML = "";
+									document.getElementById("filePath").innerHTML = "";
 								});
 							},
 							
