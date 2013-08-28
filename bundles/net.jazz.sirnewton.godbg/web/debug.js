@@ -363,31 +363,16 @@ define(['orion/xhr'], function(xhr) {
 								this.row = document.createElement("tr");
 								var funcColumn = document.createElement("td");
 								var fileColumn = document.createElement("td");
+								fileColumn.setAttribute("style", "");
 								this.row.appendChild(funcColumn);
 								this.row.appendChild(fileColumn);
 								funcColumn.innerHTML = frame.func;
 								funcColumn.setAttribute("style", "width: 50%; padding: 0px 10px 0px 0px;");
-								if (frame.file !== "") {
-									var compact = document.createElement("div");
-									var full = document.createElement("div");
-									full.setAttribute("style", "display: none;");
-									
-									compact.innerHTML = this.trimFile(this.frame.file) + ":" + this.frame.line;
-									full.innerHTML = this.frame.file + ":" + this.frame.line;
-									
-									fileColumn.appendChild(compact);
-									fileColumn.appendChild(full);
-									
-									fileColumn.addEventListener("mouseover", function(e) {
-										compact.setAttribute("style", "display: none;");
-										full.setAttribute("style", "");
-									});
-									fileColumn.addEventListener("mouseout", function(e) {
-										full.setAttribute("style", "display: none;");
-										compact.setAttribute("style", "");
-									});
+								if (frame.file !== "") {				
+									var compact = this.trimFile(this.frame.file) + ":" + this.frame.line;
+									fileColumn.innerHTML = compact;
 								}
-								fileColumn.setAttribute("style", "width: 50%;");
+								fileColumn.setAttribute("style", "width: 50%; max-width: 300px; overflow: hidden; text-overflow: clip; white-space: nowrap;");
 								this.frameTable.appendChild(this.row);
 
 								this.row.addEventListener("click", myCallback(this, function(e) {

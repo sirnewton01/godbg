@@ -52,6 +52,7 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 
 var(
 	srcDir *string
+	autoOpen *bool
 	gopath string
 	goroot string
 	cwd string
@@ -63,6 +64,7 @@ func init() {
 		flag.PrintDefaults()
 	};
 	srcDir = flag.String("srcDir", "", "Location of the source code for the executable")
+	autoOpen = flag.Bool("openBrowser", true, "Automatically open a web browser when possible")
 	
 	flag.Parse()
 	
@@ -224,7 +226,11 @@ func main() {
 
 	go func() {
 		serverAddr := <- serverAddrChan
-		openBrowser("http://"+serverAddr)
+		if *autoOpen {
+			openBrowser("http://"+serverAddr)
+		} else {
+			fmt.Printf("http://%v\n", serverAddr)
+		}
 	}()
 	
 	execArgs := flag.Args()[1:]
