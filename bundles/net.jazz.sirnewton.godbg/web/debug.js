@@ -258,12 +258,10 @@ define(['orion/xhr'], function(xhr) {
 					this.row.setAttribute("style", "vertical-align: top;");
 					
 					this.idElement = document.createElement("td");
-					this.selectedElement = document.createElement("td");
 					this.nameElement = document.createElement("td");
 					this.frameElement = document.createElement("td");
 					
 					this.row.appendChild(this.idElement);
-					this.row.appendChild(this.selectedElement);
 					this.row.appendChild(this.nameElement);
 					this.row.appendChild(this.frameElement);
 					
@@ -310,7 +308,7 @@ define(['orion/xhr'], function(xhr) {
 				},
 				
 				select: function() {			
-					this.row.setAttribute("style", this.row.getAttribute("style") + "font-weight: bold;");
+					this.row.setAttribute("style", this.row.getAttribute("style") + "background-color: #CCFF66;");
 					
 					// Clear any variables in the variables view
 					allVariablesWidget.clearVariables();
@@ -363,7 +361,6 @@ define(['orion/xhr'], function(xhr) {
 								this.row = document.createElement("tr");
 								var funcColumn = document.createElement("td");
 								var fileColumn = document.createElement("td");
-								fileColumn.setAttribute("style", "");
 								this.row.appendChild(funcColumn);
 								this.row.appendChild(fileColumn);
 								funcColumn.innerHTML = frame.func;
@@ -382,6 +379,13 @@ define(['orion/xhr'], function(xhr) {
 									}
 									
 									this.threadWidget.selectedFrame = level;
+								}));
+								
+								this.row.addEventListener("mouseover", myCallback(this, function(e) {
+									this.row.setAttribute("style", "font-weight: bold;");
+								}));
+								this.row.addEventListener("mouseout", myCallback(this, function(e) {
+									this.row.setAttribute("style", "");
 								}));
 							},
 
@@ -469,7 +473,7 @@ define(['orion/xhr'], function(xhr) {
 				},
 				
 				deselect: function() {
-					this.row.setAttribute("style", this.row.getAttribute("style").replace("font-weight: bold;", ""));
+					this.row.setAttribute("style", this.row.getAttribute("style").replace("background-color: #CCFF66;", ""));
 					
 					// Remove all of the frames except for the top one
 					for (var idx = 1; idx < this.frameWidgets.length; idx++) {
