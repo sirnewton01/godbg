@@ -8,6 +8,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/sirnewton01/gdblib"
 	"go/build"
@@ -16,11 +17,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"time"
 	"path/filepath"
-	"flag"
-	"strings"
 	"runtime"
+	"strings"
+	"time"
 )
 
 type chainedFileSystem struct {
@@ -50,24 +50,24 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 	return nil, nil
 }
 
-var(
-	srcDir *string
+var (
+	srcDir   *string
 	autoOpen *bool
-	gopath string
-	goroot string
-	cwd string
+	gopath   string
+	goroot   string
+	cwd      string
 )
 
 func init() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <executable|go package name> [arguments...]\n", os.Args[0])
 		flag.PrintDefaults()
-	};
+	}
 	srcDir = flag.String("srcDir", "", "Location of the source code for the executable")
 	autoOpen = flag.Bool("openBrowser", true, "Automatically open a web browser when possible")
-	
+
 	flag.Parse()
-	
+
 	gopath = build.Default.GOPATH
 	goroot = runtime.GOROOT()
 	cwd, _ = os.Getwd()
@@ -78,20 +78,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Please set the GOPATH and re-run.\n")
 		return
 	}
-	
+
 	if flag.NArg() < 1 {
 		flag.Usage()
 		return
 	}
-	
+
 	execPath := flag.Arg(0)
-	
+
 	// Check to see if the executable path is really a go package that
 	//  exists in the gopath's source directory
 	if !filepath.IsAbs(execPath) {
 		pkgPath := execPath
 		pkgSrcDir := filepath.Join(gopath, "src", pkgPath)
-		
+
 		pkgFile, _ := os.Open(pkgSrcDir)
 		if pkgFile != nil {
 			_, err := pkgFile.Stat()
@@ -99,22 +99,22 @@ func main() {
 				if *srcDir == "" {
 					srcDir = &pkgSrcDir
 				}
-				
+
 				execPath = filepath.Join(gopath, "bin", filepath.Base(pkgPath))
 				os.Remove(execPath)
 				execFile, _ := os.Open(execPath)
 				if execFile != nil {
 					_, err := execFile.Stat()
 					if err == nil {
-						fmt.Fprintf(os.Stderr, "Could not clean existing binary in order to recompile with debug flags. %v\n", execPath);
+						fmt.Fprintf(os.Stderr, "Could not clean existing binary in order to recompile with debug flags. %v\n", execPath)
 						return
 					}
 				}
-				
-				cmd := exec.Command("go", "install" , "-gcflags", "-N -l", pkgPath)
+
+				cmd := exec.Command("go", "install", "-gcflags", "-N -l", pkgPath)
 				msg, err := cmd.CombinedOutput()
 				if err != nil {
-					fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg));
+					fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg))
 					return
 				}
 			}
@@ -125,7 +125,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	serverAddrChan := make(chan string)
 
 	go func() {
@@ -213,26 +213,26 @@ func main() {
 		http.HandleFunc("/handle/gdb/exit", func(w http.ResponseWriter, r *http.Request) {
 			mygdb.GdbExit()
 		})
-		
+
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			panic(err)
 		}
-		
+
 		serverAddrChan <- listener.Addr().String()
 
 		http.Serve(listener, nil)
 	}()
 
 	go func() {
-		serverAddr := <- serverAddrChan
+		serverAddr := <-serverAddrChan
 		if *autoOpen {
-			openBrowser("http://"+serverAddr)
+			openBrowser("http://" + serverAddr)
 		} else {
 			fmt.Printf("http://%v\n", serverAddr)
 		}
 	}()
-	
+
 	execArgs := flag.Args()[1:]
 	mygdb.ExecArgs(gdblib.ExecArgsParms{strings.Join(execArgs, " ")})
 	mygdb.ExecRun(gdblib.ExecRunParms{})
@@ -420,25 +420,25 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 		}
 
 		path := parms["File"]
-		
+
 		if path == "" {
 			w.WriteHeader(400)
 			w.Write([]byte("No path provided"))
 			return
 		}
-		
+
 		path, err = filepath.Abs(path)
-		
+
 		// If the path is not under the current directory or in the GOPATH/GOROOT then it is an illegal access
-		if !strings.HasPrefix(path, gopath) && 
+		if !strings.HasPrefix(path, gopath) &&
 			!strings.HasPrefix(path, cwd) &&
 			!strings.HasPrefix(path, goroot) {
-			
+
 			w.WriteHeader(400)
 			w.Write([]byte("Illegal file access"))
 			return
 		}
-		
+
 		file, err := os.Open(path)
 
 		if err != nil {
@@ -528,7 +528,7 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 		}
 		w.WriteHeader(200)
 	})
-	
+
 	http.HandleFunc("/handle/exec/args", func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecArgsParms{}
 
@@ -552,7 +552,7 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 
 		decoder := json.NewDecoder(r.Body)
 		err := decoder.Decode(&parms)
-		
+
 		mygdb.ExecInterrupt(parms)
 
 		if err != nil {
@@ -666,7 +666,7 @@ func addBreakpointHandlers(mygdb *gdblib.GDB) {
 func addVariableHandlers(mygdb *gdblib.GDB) {
 	http.HandleFunc("/handle/variable/create", func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.VarCreateParms{}
-		
+
 		decoder := json.NewDecoder(r.Body)
 		err := decoder.Decode(&parms)
 
@@ -675,7 +675,7 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 			w.Write([]byte(err.Error()))
 			return
 		}
-		
+
 		result, err := mygdb.VarCreate(parms)
 
 		if err != nil {
@@ -697,7 +697,7 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 
 	http.HandleFunc("/handle/variable/delete", func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.VarDeleteParms{}
-		
+
 		decoder := json.NewDecoder(r.Body)
 		err := decoder.Decode(&parms)
 
@@ -706,7 +706,7 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 			w.Write([]byte(err.Error()))
 			return
 		}
-		
+
 		err = mygdb.VarDelete(parms)
 
 		if err != nil {
@@ -714,13 +714,13 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 			w.Write([]byte(err.Error()))
 			return
 		}
-		
+
 		w.WriteHeader(200)
 	})
-	
+
 	http.HandleFunc("/handle/variable/listchildren", func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.VarListChildrenParms{}
-		
+
 		decoder := json.NewDecoder(r.Body)
 		err := decoder.Decode(&parms)
 
@@ -729,7 +729,7 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 			w.Write([]byte(err.Error()))
 			return
 		}
-		
+
 		result, err := mygdb.VarListChildren(parms)
 
 		if err != nil {
