@@ -9,8 +9,9 @@ The web-based UI makes godbg multi-platform and easier to remotely access your d
 * Thread information
 * Execution control (step, next, interrupt)
 * Breakpoints (line and function, enable, disable)
+* Variables (inspect, custom expressions)
 * Console output
-* Source code highlighting
+* Source line highlighting
 
 # Installation Notes
 
