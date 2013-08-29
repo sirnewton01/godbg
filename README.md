@@ -13,6 +13,10 @@ The web-based UI makes godbg multi-platform and easier to remotely access your d
 * Console output
 * Source line highlighting
 
+# Video
+Check out the youtube video for a walkthrough:
+https://www.youtube.com/watch?v=OyWaAJD6hr8
+
 # Installation Notes
 
 Godbg uses the gdb MI (Machine Interface) to debug yor application. The MI changes from time to time. This version of godbg should work with gdb versions 7.5 and 7.6. Newer versions of Linux will often come with these versions of gdb but Windows and Mac need a little extra setup.
