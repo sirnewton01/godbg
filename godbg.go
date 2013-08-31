@@ -51,11 +51,13 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 }
 
 var (
-	srcDir   *string
-	autoOpen *bool
-	gopath   string
-	goroot   string
-	cwd      string
+	srcDir    *string
+	autoOpen  *bool
+	gopath    string
+	gopaths   []string
+	goroot    string
+	cwd       string
+	bundleDir string
 )
 
 func init() {
@@ -71,11 +73,22 @@ func init() {
 	gopath = build.Default.GOPATH
 	goroot = runtime.GOROOT()
 	cwd, _ = os.Getwd()
+
+	// Search gopaths for the bundles directory for our web bundles
+	gopaths = strings.Split(gopath, string(filepath.ListSeparator))
+	for _, path := range gopaths {
+		pathToMatch := filepath.Join(path, "/src/github.com/sirnewton01/godbg/bundles")
+
+		_, err := os.Stat(pathToMatch)
+		if err == nil {
+			bundleDir = pathToMatch
+		}
+	}
 }
 
 func main() {
-	if gopath == "" {
-		fmt.Fprintf(os.Stderr, "Please set the GOPATH and re-run.\n")
+	if bundleDir == "" {
+		fmt.Fprintf(os.Stderr, "Please set the GOPATH to include the godbg project and re-run.\n")
 		return
 	}
 
@@ -90,32 +103,41 @@ func main() {
 	//  exists in the gopath's source directory
 	if !filepath.IsAbs(execPath) {
 		pkgPath := execPath
-		pkgSrcDir := filepath.Join(gopath, "src", pkgPath)
+		pkgSrcDir := ""
+		pkgBase := filepath.Base(pkgPath)
 
-		pkgFile, _ := os.Open(pkgSrcDir)
-		if pkgFile != nil {
-			_, err := pkgFile.Stat()
+		for _, path := range gopaths {
+			srcPathMatch := filepath.Join(path, "src", pkgPath)
+			binPathMatch := filepath.Join(path, "bin", pkgBase)
+
+			_, err := os.Stat(srcPathMatch)
 			if err == nil {
+				pkgSrcDir = srcPathMatch
 				if *srcDir == "" {
 					srcDir = &pkgSrcDir
 				}
-
-				execPath = filepath.Join(gopath, "bin", filepath.Base(pkgPath))
-				os.Remove(execPath)
-				execFile, _ := os.Open(execPath)
-				if execFile != nil {
-					_, err := execFile.Stat()
-					if err == nil {
-						fmt.Fprintf(os.Stderr, "Could not clean existing binary in order to recompile with debug flags. %v\n", execPath)
-						return
+				
+				_, err = os.Stat(binPathMatch)
+				execPath = binPathMatch
+				
+				if err == nil {
+					os.Remove(execPath)
+	
+					execFile, _ := os.Open(execPath)
+					if execFile != nil {
+						_, err := execFile.Stat()
+						if err == nil {
+							fmt.Fprintf(os.Stderr, "Could not clean existing binary in order to recompile with debug flags. %v\n", execPath)
+							os.Exit(1)
+						}
 					}
 				}
-
+				
 				cmd := exec.Command("go", "install", "-gcflags", "-N -l", pkgPath)
 				msg, err := cmd.CombinedOutput()
 				if err != nil {
 					fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg))
-					return
+					os.Exit(1)
 				}
 			}
 		}
@@ -129,12 +151,11 @@ func main() {
 	serverAddrChan := make(chan string)
 
 	go func() {
-		bundle_root_dir := gopath + "/src/github.com/sirnewton01/godbg/bundles"
-		file, _ := os.Open(bundle_root_dir)
+		file, _ := os.Open(bundleDir)
 		bundleNames, _ := file.Readdirnames(-1)
 		bundleFileSystems := make([]http.FileSystem, len(bundleNames), len(bundleNames))
 		for idx, bundleName := range bundleNames {
-			bundleFileSystems[idx] = http.Dir(bundle_root_dir + "/" + bundleName + "/web")
+			bundleFileSystems[idx] = http.Dir(filepath.Join(bundleDir, bundleName, "web"))
 		}
 		cfs := chainedFileSystem{fs: bundleFileSystems}
 
@@ -429,8 +450,16 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 
 		path, err = filepath.Abs(path)
 
+		inGopath := false
+		for _, p := range gopaths {
+			if strings.HasPrefix(path, p) {
+				inGopath = true
+				break
+			}
+		}
+
 		// If the path is not under the current directory or in the GOPATH/GOROOT then it is an illegal access
-		if !strings.HasPrefix(path, gopath) &&
+		if !inGopath &&
 			!strings.HasPrefix(path, cwd) &&
 			!strings.HasPrefix(path, goroot) {
 
