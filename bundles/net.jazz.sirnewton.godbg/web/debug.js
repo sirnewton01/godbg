@@ -101,6 +101,8 @@ define(['orion/xhr'], function(xhr) {
 	var exitButton = document.getElementById("exit");
 	clickCallback(null, exitButton, "POST", "/handle/gdb/exit");
 	
+	var allBreakpointsWidget = {};
+	
 	var allVariablesWidget = {
 		variablesTable: document.getElementById("variablesTable"),
 		newExpressionInput: document.getElementById("addExpression"),
@@ -228,6 +230,7 @@ define(['orion/xhr'], function(xhr) {
 		selectedThread: "",
 		threadWidgets: {},
 		threadTable: document.getElementById("threadTable"),
+		stopCount: 0,
 		
 		init: function() {
 		
@@ -390,7 +393,16 @@ define(['orion/xhr'], function(xhr) {
 							},
 
 							select: function() {
-								allVariablesWidget.show();
+								// The first two times we stop it will be on the
+								//  main breakpoint. The user will want the
+								//  breakpoints widget to be active, not the
+								//  variables widget for these times.
+								if (allThreadsWidget.stopCount > 2) {
+									allVariablesWidget.show();
+								} else if (allBreakpointsWidget.show) {
+									allBreakpointsWidget.show();
+								}
+								allThreadsWidget.stopCount++;
 
 								myXhr("POST", "/handle/frame/variableslist", {
 									AllValues: true,
@@ -539,27 +551,24 @@ define(['orion/xhr'], function(xhr) {
 				this.addThread(currentThread);
 				this.selectThread(currentThread);
 			}
-		
-			var thisWidget = this;
 			
 			// Get all of the threads and add them
 			// TODO convert this into /handle/thread/list
 			myXhr("POST", "/handle/thread/listids", {
-			// TODO Fix the callback to use "this" instead of "thisWidget"
-			}).then(function(result){
+			}).then(myCallback(this, function(result) {
 				var resultObj = JSON.parse(result.response);
 				
 				var threadIds = resultObj["thread-ids"];
 				var currentThreadId = resultObj["current-thread-id"];
 				
 				for (var idx = 0; idx < threadIds.length; idx++) {
-					thisWidget.addThread(threadIds[idx]);
+					this.addThread(threadIds[idx]);
 				}
 				
 				if (currentThreadId !== "") {
-					thisWidget.selectThread(currentThreadId);
+					this.selectThread(currentThreadId);
 				}
-			}, handleXhrError);
+			}), handleXhrError);
 		},
 		
 		handleAllThreadsRunning: function(currentThread) {
@@ -580,7 +589,7 @@ define(['orion/xhr'], function(xhr) {
 		}
 	};
 	
-	var allBreakpointsWidget = {
+	allBreakpointsWidget = {
 		breakpointsTable: document.getElementById("breakpointTable"),
 		addBreakpointInput: document.getElementById("addBreakpoint"),
 		
