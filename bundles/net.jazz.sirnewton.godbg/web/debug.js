@@ -684,6 +684,10 @@ define(['orion/xhr'], function(xhr) {
 			
 			parentPanel.setAttribute("style", parentPanel.getAttribute("style").replace("z-index: 50;", "z-index: 100;"));
 			this.variablesWidget.hide();
+			
+			// Breakpoints widget is now shown. User may want to begin typing a
+			//  new breakpoint.
+			this.addBreakpointInput.focus();
 		},
 		
 		hide: function() {
