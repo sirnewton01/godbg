@@ -730,6 +730,7 @@ define(['orion/xhr'], function(xhr) {
 	var outputArea = document.getElementById("outputArea");
 	
 	var wsUrl = document.URL.replace("http://", "ws://") + "output";
+	wsUrl = wsUrl.replace("https://", "wss://");
 	var websocket = new WebSocket(wsUrl);
 	//websocket.onopen = function(evt) {  };
 	websocket.onclose = function(evt) {

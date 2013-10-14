@@ -21,6 +21,10 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"math/rand"
+	"strconv"
+	"log"
+	"crypto/tls"
 )
 
 type chainedFileSystem struct {
@@ -50,6 +54,10 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 	return nil, nil
 }
 
+const (
+	loopbackHost          = "127.0.0.1"
+)
+
 var (
 	srcDir    *string
 	autoOpen  *bool
@@ -58,6 +66,11 @@ var (
 	goroot    string
 	cwd       string
 	bundleDir string
+	
+	magicKey  string
+	hostName  string       = loopbackHost
+	certFile  string
+	keyFile   string
 )
 
 func init() {
@@ -84,11 +97,28 @@ func init() {
 			bundleDir = pathToMatch
 		}
 	}
+	
+	if os.Getenv("GOHOST") != "" {
+		hostName = os.Getenv("GOHOST")
+		
+		// Make sure that we have the certificate file and key file set
+		//  in environment variables
+		certFile = os.Getenv("GOCERTFILE")
+		keyFile = os.Getenv("GOKEYFILE")
+		
+		if (certFile == "" || keyFile == "") {
+			log.Fatal("Please set GOCERTFILE and GOKEYFILE environment variables to point to the TLS/SSL certificate file and key file to use for the secure connection.\n")
+		}
+	
+		// Initialize the random magic key for this session
+		rand.Seed(time.Now().UTC().UnixNano())
+		magicKey = strconv.FormatInt(rand.Int63(), 16)
+	}
 }
 
 func main() {
 	if bundleDir == "" {
-		fmt.Fprintf(os.Stderr, "Please set the GOPATH to include the godbg project and re-run.\n")
+		log.Fatal("Please set the GOPATH that includes the godbg project and re-run.")
 		return
 	}
 
@@ -159,9 +189,9 @@ func main() {
 		}
 		cfs := chainedFileSystem{fs: bundleFileSystems}
 
-		http.Handle("/", http.FileServer(cfs))
+		http.HandleFunc("/", wrapFileServer(http.FileServer(cfs)))
 
-		http.Handle("/output", websocket.Handler(func(ws *websocket.Conn) {
+		http.HandleFunc("/output", wrapWebSocket(websocket.Handler(func(ws *websocket.Conn) {
 			type webSockResult struct {
 				Type string
 				Data interface{}
@@ -222,7 +252,7 @@ func main() {
 					// TODO log the marshalling error
 				}
 			}
-		}))
+		})))
 
 		// Add handlers for each category of gdb commands (exec, breakpoint, thread, etc.)
 		addExecHandlers(mygdb)
@@ -231,26 +261,57 @@ func main() {
 		addFrameHandlers(mygdb)
 		addVariableHandlers(mygdb)
 
-		http.HandleFunc("/handle/gdb/exit", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("/handle/gdb/exit", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			mygdb.GdbExit()
-		})
+		}))
 
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			panic(err)
+		// Unsecure local connection through the loopback interface
+		if hostName == loopbackHost {
+			listener, err := net.Listen("tcp", hostName + ":0")
+			if err != nil {
+				panic(err)
+			}
+	
+			serverAddrChan <- listener.Addr().String()
+	
+			http.Serve(listener, nil)
+		} else {
+			// Secure connection requires a SSL/TLS cerificate and key
+			config := &tls.Config{}
+			if config.NextProtos == nil {
+				config.NextProtos = []string{"http/1.1"}
+			}
+			
+			config.Certificates = make([]tls.Certificate, 1)
+			config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				panic(err)
+			}
+			
+			listener, err := tls.Listen("tcp", hostName + ":0", config)
+			if err != nil {
+				panic(err)
+			}
+	
+			serverAddrChan <- strings.Replace(listener.Addr().String(), loopbackHost, hostName, 1)
+	
+			http.Serve(listener, nil)
 		}
-
-		serverAddrChan <- listener.Addr().String()
-
-		http.Serve(listener, nil)
 	}()
 
 	go func() {
 		serverAddr := <-serverAddrChan
-		if *autoOpen {
-			openBrowser("http://" + serverAddr)
+		url := ""
+		if hostName != loopbackHost {
+			url = "https://" + serverAddr + "/?MAGIC=" + magicKey
 		} else {
-			fmt.Printf("http://%v\n", serverAddr)
+			url = "http://" + serverAddr
+		}
+		
+		if *autoOpen {
+			openBrowser(url)
+		} else {
+			fmt.Printf("%v\n", url)
 		}
 	}()
 
@@ -264,8 +325,96 @@ func main() {
 	}
 }
 
+type handlerFunc func(http.ResponseWriter, *http.Request)
+
+func getPortFromRequest(r *http.Request) string {
+	hostPort := strings.Split(r.URL.Host, ":")
+	port := "443"
+	if len(hostPort) == 2 {
+		port = hostPort[1]
+	}
+	return port
+}
+
+func wrapHandlerFunc(delegate handlerFunc) (handlerFunc) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if hostName != loopbackHost {
+			// Check the magic cookie
+			// Since redirection is not generally possible here if the cookie is not
+			//  present then we deny the request.
+
+			cookie, err := r.Cookie("MAGIC"+getPortFromRequest(r))
+			if err != nil || (*cookie).Value != magicKey {
+				// Denied
+				http.Error(w, "Permission Denied", 403)
+				return
+			}
+		}
+		
+		delegate(w, r)
+	}
+}
+
+func wrapWebSocket(delegate http.Handler) handlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) {
+		if hostName != loopbackHost {
+			// Check the magic cookie
+			// Since redirection is not generally possible if the cookie is not
+			//  present then we deny the request.
+			cookie, err := req.Cookie("MAGIC"+getPortFromRequest(req))
+			if err != nil || (*cookie).Value != magicKey {
+				// Denied
+				http.Error(writer, "Permission Denied", 403)
+				return
+			}
+		}
+		
+		delegate.ServeHTTP(writer, req)
+	}
+}
+
+func wrapFileServer(delegate http.Handler) handlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) {
+		if hostName != loopbackHost {
+			// Check for the magic cookie
+			port := getPortFromRequest(req)
+			
+			cookie, err := req.Cookie("MAGIC"+port)
+			if err != nil || (*cookie).Value != magicKey {
+				// Check for a query parameter with the magic cookie
+				// If we find it then we redirect the user's browser to set the
+				//  cookie for all future requests.
+				// Otherwise we return permission denied.
+				
+				magicValues := req.URL.Query()["MAGIC"]
+				if len(magicValues) < 1 || magicValues[0] != magicKey {
+					// Denied
+					http.Error(writer, "Permission Denied", 403)
+					return
+				}
+				
+				// Redirect to the base URL setting the cookie
+				// Cookie lasts for 1 year
+				cookie := &http.Cookie{Name: "MAGIC"+port, Value: magicKey, 
+										Path: "/", Domain: hostName, MaxAge: 2000000,
+										Secure: true, HttpOnly: false}						
+				
+				http.SetCookie(writer, cookie)
+				
+				urlWithoutQuery := req.URL
+				urlWithoutQuery.RawQuery = ""
+				
+				http.Redirect(writer, req, urlWithoutQuery.String(), 302)
+				return
+			}
+		}
+		
+		delegate.ServeHTTP(writer, req)
+	}
+}
+
 func addThreadHandlers(mygdb *gdblib.GDB) {
-	http.HandleFunc("/handle/thread/listids", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/thread/listids", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		result, err := mygdb.ThreadListIds()
 
 		if err != nil {
@@ -283,8 +432,8 @@ func addThreadHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
-	http.HandleFunc("/handle/thread/select", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	http.HandleFunc("/handle/thread/select", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ThreadSelectParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -313,8 +462,8 @@ func addThreadHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
-	http.HandleFunc("/handle/thread/info", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	http.HandleFunc("/handle/thread/info", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ThreadInfoParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -343,11 +492,11 @@ func addThreadHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 }
 
 func addFrameHandlers(mygdb *gdblib.GDB) {
-	http.HandleFunc("/handle/frame/stackinfo", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/frame/stackinfo", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		result, err := mygdb.StackInfoFrame()
 
 		if err != nil {
@@ -365,8 +514,8 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
-	http.HandleFunc("/handle/frame/stacklist", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	http.HandleFunc("/handle/frame/stacklist", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.StackListFramesParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -395,9 +544,9 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 
-	http.HandleFunc("/handle/frame/variableslist", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/frame/variableslist", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.StackListVariablesParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -426,9 +575,9 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 
-	http.HandleFunc("/handle/file/get", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/file/get", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := make(map[string]string)
 
 		decoder := json.NewDecoder(r.Body)
@@ -482,11 +631,11 @@ func addFrameHandlers(mygdb *gdblib.GDB) {
 				w.Write([]byte(err.Error()))
 			}
 		}
-	})
+	}))
 }
 
 func addExecHandlers(mygdb *gdblib.GDB) {
-	http.HandleFunc("/handle/exec/next", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/exec/next", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecNextParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -502,9 +651,9 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/exec/step", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/exec/step", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecStepParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -520,9 +669,9 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/exec/continue", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/exec/continue", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecContinueParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -538,9 +687,9 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/exec/run", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/exec/run", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecRunParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -556,9 +705,9 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/exec/args", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/exec/args", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecArgsParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -574,9 +723,9 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/exec/interrupt", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/exec/interrupt", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.ExecInterruptParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -590,11 +739,11 @@ func addExecHandlers(mygdb *gdblib.GDB) {
 			return
 		}
 		w.WriteHeader(200)
-	})
+	}))
 }
 
 func addBreakpointHandlers(mygdb *gdblib.GDB) {
-	http.HandleFunc("/handle/breakpoint/list", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/breakpoint/list", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		result, err := mygdb.BreakList()
 
 		if err != nil {
@@ -612,9 +761,9 @@ func addBreakpointHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 
-	http.HandleFunc("/handle/breakpoint/insert", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/breakpoint/insert", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.BreakInsertParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -643,9 +792,9 @@ func addBreakpointHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 
-	http.HandleFunc("/handle/breakpoint/enable", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/breakpoint/enable", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.BreakEnableParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -666,9 +815,9 @@ func addBreakpointHandlers(mygdb *gdblib.GDB) {
 		}
 
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/breakpoint/disable", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/breakpoint/disable", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.BreakDisableParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -689,11 +838,11 @@ func addBreakpointHandlers(mygdb *gdblib.GDB) {
 		}
 
 		w.WriteHeader(200)
-	})
+	}))
 }
 
 func addVariableHandlers(mygdb *gdblib.GDB) {
-	http.HandleFunc("/handle/variable/create", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/variable/create", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.VarCreateParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -722,9 +871,9 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 
-	http.HandleFunc("/handle/variable/delete", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/variable/delete", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.VarDeleteParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -745,9 +894,9 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 		}
 
 		w.WriteHeader(200)
-	})
+	}))
 
-	http.HandleFunc("/handle/variable/listchildren", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/handle/variable/listchildren", wrapHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parms := gdblib.VarListChildrenParms{}
 
 		decoder := json.NewDecoder(r.Body)
@@ -776,5 +925,5 @@ func addVariableHandlers(mygdb *gdblib.GDB) {
 			w.WriteHeader(200)
 			w.Write(resultBytes)
 		}
-	})
+	}))
 }

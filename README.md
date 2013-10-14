@@ -45,7 +45,7 @@ Mac OS X requires that the debugger binary is signed with a trusted certificate 
 
 ## Go Runtime Support
 
-GDB versions 7.6+ come with increased safety precautions for auto-loading scripts, including the Go language helper script. This script not only helps gdb to pretty print variables but also helps gdb to avoid analyzing unitialized variables, which can cause gdb to become unresponsive.
+GDB versions 7.5+ come with increased safety precautions for auto-loading scripts, including the Go language helper script. This script not only helps gdb to pretty print variables but also helps gdb to avoid analyzing unitialized variables, which can cause gdb to become unresponsive.
 
 If the Go language helper script initializes properly you will see the message "Loading Go Runtime support." Otherwise, you might encounter the following message.
 
@@ -57,3 +57,28 @@ line to your configuration file "/home/cmcgee/.gdbinit".
 
 If you follow these instructions then your debugging experience will be much better.
 
+# Remote Access
+
+Godbg has remote access capabilities using your web browser and http. First, some setup is required to specify the fully qualified domain name of your system and establish a secure connection.
+
+## Generating SSL/TLS keys
+
+Godbg uses HTTP over SSL/TLS, otherwise known as https, to encrypt information sent from the remote system and your local web browser. In order to set up the encryption both a certificate and encryption key is needed to establish the encrypted connection. You can use a tool like openssl or use a Go script included in every Go install to generate it.
+
+To run the Go script to generate your certificates you can run the following command (replace / with \ on Windows, myhost.example.com with your fully qualified domain name):
+
+$ go run /path/to/go/install/src/pkg/crypto/tls/generate _ cert.go -ca=true -duration=8760h0m0s -host=myhost.example.com
+
+It is important to secure the certificates and keys with filesystem permissions so that others canot use them to intercept your communications.
+
+$ chmod go-rwx cert.pem key.pem
+
+## Setting Environment Variables
+
+Your fully qualified domain name, certificate file and key file are provided to gdbg using the following environment variables:
+
+$ export GOHOST=myhost.example.com
+$ export GOCERTFILE=/path/to/my/cert.pem
+$ export GOKEYFILE=/path/to/my/key.pem
+
+These variables can be set in the same place you set your GOPATH and PATH variables so that they are set automatically every time you run the tool.
