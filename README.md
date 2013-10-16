@@ -71,14 +71,26 @@ $ go run /path/to/go/install/src/pkg/crypto/tls/generate _ cert.go -ca=true -dur
 
 It is important to secure the certificates and keys with filesystem permissions so that others canot use them to intercept your communications.
 
-$ chmod go-rwx cert.pem key.pem
+	$ chmod go-rwx cert.pem key.pem
 
 ## Setting Environment Variables
 
 Your fully qualified domain name, certificate file and key file are provided to gdbg using the following environment variables:
 
-$ export GOHOST=myhost.example.com
-$ export GOCERTFILE=/path/to/my/cert.pem
-$ export GOKEYFILE=/path/to/my/key.pem
+	$ export GOHOST=myhost.example.com
+	$ export GOCERTFILE=/path/to/my/cert.pem
+	$ export GOKEYFILE=/path/to/my/key.pem
 
 These variables can be set in the same place you set your GOPATH and PATH variables so that they are set automatically every time you run the tool.
+
+# Debug session sometimes freezes and gdb process consumes alot of CPU
+
+There is a problem with the string pretty-printer in the standard Go runtime library for gdb, which causes it to attempt to parse uninitialized strings. If there are alot of uninitialized strings then gdb attempts to transfer alot of target memory to satisfy the pretty printer. There is a small tweak you can make to your runtime-gdb.py script (located in your $GOROOT/src/pkg/runtime directory). Find the StringTypePrinter class in the file and change the to_string() method body to look like this (be mindful of the tabs):
+
+	def to_string(self):
+		l = int(self.val['len'])
+		if l < 1024 and l > -1:
+			return self.val['str'].string("utf-8", "ignore", l)
+		return self.val['len']
+
+Note that this tweak will print out the length of really big strings instead of their value.
