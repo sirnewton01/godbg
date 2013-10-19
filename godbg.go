@@ -140,6 +140,8 @@ func main() {
 			srcPathMatch := filepath.Join(path, "src", pkgPath)
 			binPathMatch := filepath.Join(path, "bin", pkgBase)
 
+			// Try to discover the src location and delete any existing binaries
+			//  for this packages
 			_, err := os.Stat(srcPathMatch)
 			if err == nil {
 				pkgSrcDir = srcPathMatch
@@ -162,14 +164,17 @@ func main() {
 						}
 					}
 				}
-				
-				cmd := exec.Command("go", "install", "-gcflags", "-N -l", pkgPath)
-				msg, err := cmd.CombinedOutput()
-				if err != nil {
-					fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg))
-					os.Exit(1)
-				}
 			}
+			
+			// Delete the "pkg" directory with any lingering archives
+			os.RemoveAll(filepath.Join(path, "pkg"))
+		}
+		
+		cmd := exec.Command("go", "install", "-gcflags", "-N -l", pkgPath)
+		msg, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("Could not compile binary with debug flags: %v\n%v\n", pkgPath, string(msg))
+			os.Exit(1)
 		}
 	}
 
