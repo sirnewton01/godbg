@@ -6,6 +6,7 @@ package main
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,18 +14,17 @@ import (
 	"github.com/sirnewton01/gdblib"
 	"go/build"
 	"io"
+	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
-	"math/rand"
-	"strconv"
-	"log"
-	"crypto/tls"
 )
 
 type chainedFileSystem struct {
@@ -55,7 +55,7 @@ func (file noReaddirFile) Readdir(count int) ([]os.FileInfo, error) {
 }
 
 const (
-	loopbackHost          = "127.0.0.1"
+	loopbackHost = "127.0.0.1"
 )
 
 var (
@@ -66,11 +66,11 @@ var (
 	goroot    string
 	cwd       string
 	bundleDir string
-	
-	magicKey  string
-	hostName  string       = loopbackHost
-	certFile  string
-	keyFile   string
+
+	magicKey string
+	hostName string = loopbackHost
+	certFile string
+	keyFile  string
 )
 
 func init() {
@@ -97,19 +97,19 @@ func init() {
 			bundleDir = pathToMatch
 		}
 	}
-	
+
 	if os.Getenv("GOHOST") != "" {
 		hostName = os.Getenv("GOHOST")
-		
+
 		// Make sure that we have the certificate file and key file set
 		//  in environment variables
 		certFile = os.Getenv("GOCERTFILE")
 		keyFile = os.Getenv("GOKEYFILE")
-		
-		if (certFile == "" || keyFile == "") {
+
+		if certFile == "" || keyFile == "" {
 			log.Fatal("Please set GOCERTFILE and GOKEYFILE environment variables to point to the TLS/SSL certificate file and key file to use for the secure connection.\n")
 		}
-	
+
 		// Initialize the random magic key for this session
 		rand.Seed(time.Now().UTC().UnixNano())
 		magicKey = strconv.FormatInt(rand.Int63(), 16)
@@ -148,13 +148,13 @@ func main() {
 				if *srcDir == "" {
 					srcDir = &pkgSrcDir
 				}
-				
+
 				_, err = os.Stat(binPathMatch)
 				execPath = binPathMatch
-				
+
 				if err == nil {
 					os.Remove(execPath)
-	
+
 					execFile, _ := os.Open(execPath)
 					if execFile != nil {
 						_, err := execFile.Stat()
@@ -165,11 +165,11 @@ func main() {
 					}
 				}
 			}
-			
+
 			// Delete the "pkg" directory with any lingering archives
 			os.RemoveAll(filepath.Join(path, "pkg"))
 		}
-		
+
 		cmd := exec.Command("go", "install", "-gcflags", "-N -l", pkgPath)
 		msg, err := cmd.CombinedOutput()
 		if err != nil {
@@ -272,13 +272,13 @@ func main() {
 
 		// Unsecure local connection through the loopback interface
 		if hostName == loopbackHost {
-			listener, err := net.Listen("tcp", hostName + ":0")
+			listener, err := net.Listen("tcp", hostName+":0")
 			if err != nil {
 				panic(err)
 			}
-	
+
 			serverAddrChan <- listener.Addr().String()
-	
+
 			http.Serve(listener, nil)
 		} else {
 			// Secure connection requires a SSL/TLS cerificate and key
@@ -286,20 +286,20 @@ func main() {
 			if config.NextProtos == nil {
 				config.NextProtos = []string{"http/1.1"}
 			}
-			
+
 			config.Certificates = make([]tls.Certificate, 1)
 			config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
 			if err != nil {
 				panic(err)
 			}
-			
-			listener, err := tls.Listen("tcp", hostName + ":0", config)
+
+			listener, err := tls.Listen("tcp", hostName+":0", config)
 			if err != nil {
 				panic(err)
 			}
-	
+
 			serverAddrChan <- strings.Replace(listener.Addr().String(), loopbackHost, hostName, 1)
-	
+
 			http.Serve(listener, nil)
 		}
 	}()
@@ -312,7 +312,7 @@ func main() {
 		} else {
 			url = "http://" + serverAddr
 		}
-		
+
 		if *autoOpen {
 			openBrowser(url)
 		} else {
@@ -341,21 +341,21 @@ func getPortFromRequest(r *http.Request) string {
 	return port
 }
 
-func wrapHandlerFunc(delegate handlerFunc) (handlerFunc) {
+func wrapHandlerFunc(delegate handlerFunc) handlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if hostName != loopbackHost {
 			// Check the magic cookie
 			// Since redirection is not generally possible here if the cookie is not
 			//  present then we deny the request.
 
-			cookie, err := r.Cookie("MAGIC"+getPortFromRequest(r))
+			cookie, err := r.Cookie("MAGIC" + getPortFromRequest(r))
 			if err != nil || (*cookie).Value != magicKey {
 				// Denied
 				http.Error(w, "Permission Denied", 403)
 				return
 			}
 		}
-		
+
 		delegate(w, r)
 	}
 }
@@ -366,14 +366,14 @@ func wrapWebSocket(delegate http.Handler) handlerFunc {
 			// Check the magic cookie
 			// Since redirection is not generally possible if the cookie is not
 			//  present then we deny the request.
-			cookie, err := req.Cookie("MAGIC"+getPortFromRequest(req))
+			cookie, err := req.Cookie("MAGIC" + getPortFromRequest(req))
 			if err != nil || (*cookie).Value != magicKey {
 				// Denied
 				http.Error(writer, "Permission Denied", 403)
 				return
 			}
 		}
-		
+
 		delegate.ServeHTTP(writer, req)
 	}
 }
@@ -383,37 +383,37 @@ func wrapFileServer(delegate http.Handler) handlerFunc {
 		if hostName != loopbackHost {
 			// Check for the magic cookie
 			port := getPortFromRequest(req)
-			
-			cookie, err := req.Cookie("MAGIC"+port)
+
+			cookie, err := req.Cookie("MAGIC" + port)
 			if err != nil || (*cookie).Value != magicKey {
 				// Check for a query parameter with the magic cookie
 				// If we find it then we redirect the user's browser to set the
 				//  cookie for all future requests.
 				// Otherwise we return permission denied.
-				
+
 				magicValues := req.URL.Query()["MAGIC"]
 				if len(magicValues) < 1 || magicValues[0] != magicKey {
 					// Denied
 					http.Error(writer, "Permission Denied", 403)
 					return
 				}
-				
+
 				// Redirect to the base URL setting the cookie
 				// Cookie lasts for 1 year
-				cookie := &http.Cookie{Name: "MAGIC"+port, Value: magicKey, 
-										Path: "/", Domain: hostName, MaxAge: 2000000,
-										Secure: true, HttpOnly: false}						
-				
+				cookie := &http.Cookie{Name: "MAGIC" + port, Value: magicKey,
+					Path: "/", Domain: hostName, MaxAge: 2000000,
+					Secure: true, HttpOnly: false}
+
 				http.SetCookie(writer, cookie)
-				
+
 				urlWithoutQuery := req.URL
 				urlWithoutQuery.RawQuery = ""
-				
+
 				http.Redirect(writer, req, urlWithoutQuery.String(), 302)
 				return
 			}
 		}
-		
+
 		delegate.ServeHTTP(writer, req)
 	}
 }
